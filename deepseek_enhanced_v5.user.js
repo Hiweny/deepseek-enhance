@@ -1,8 +1,8 @@
 // ==UserScript==
 // @name         DeepSeek 全功能增强
 // @namespace    http://tampermonkey.net/
-// @version      5.5
-// @description  气泡分割 + 全局背景 + 全屏 + 防撤回 + 隐私模式(页面内拼接+上下文管理+全局总结) + 时间注入(全局) + Mermaid渲染 + 主题系统 + 气泡预设 + 消息导航(滚动显示/自动隐藏) + 缩放系统
+// @version      6.0
+// @description  气泡分割 + 全局背景 + 全屏 + 防撤回 + 隐私模式(智能回填+全量拼接) + 时间注入(全局) + Mermaid渲染 + 主题系统 + 气泡预设 + 缩放系统
 // @author       Maid
 // @match        https://chat.deepseek.com/*
 // @grant        GM_setValue
@@ -50,18 +50,15 @@
     function getZoom()  { return GM_getValue(zoomKey(), 100); }
     function setZoom(v) { GM_setValue(zoomKey(), v); }
 
-    // 隐私模式存储 (原页面内拼接模式)
-    function privEnabledKey() { return PFX + 'priv_enabled'; }
+    // 隐私模式存储 (智能模式 + 全量模式)
+    function privModeKey() { return PFX + 'priv_mode'; }
     function privHistoryKey() { return PFX + 'priv_history'; }
-    function privSummaryKey() { return PFX + 'priv_summary'; }
     function privCtxCountKey() { return PFX + 'priv_ctx_count'; }
     function privSysPromptKey() { return PFX + 'priv_sys_prompt'; }
-    function getPrivEnabled() { return GM_getValue(privEnabledKey(), false); }
-    function setPrivEnabled(v) { GM_setValue(privEnabledKey(), v); }
+    function getPrivMode() { return GM_getValue(privModeKey(), 'off'); }
+    function setPrivMode(v) { GM_setValue(privModeKey(), v); }
     function getPrivHistory() { return GM_getValue(privHistoryKey(), []); }
     function setPrivHistory(v) { GM_setValue(privHistoryKey(), v); }
-    function getPrivSummary() { return GM_getValue(privSummaryKey(), null); }
-    function setPrivSummary(v) { GM_setValue(privSummaryKey(), v); }
     function getPrivCtxCount() { return GM_getValue(privCtxCountKey(), 30); }
     function setPrivCtxCount(v) { GM_setValue(privCtxCountKey(), v); }
     function getPrivSysPrompt() {
@@ -82,110 +79,14 @@
         return Math.ceil(cn * 1.5 + en / 4);
     }
 
-    // 隐私模式：总结状态
-    var _pendingSummary = false;      // true = next send is a summary request
-    var _capturingSummary = false;     // true = next response should be captured as summary
-    var _summaryPromptText = '';       // the constructed summary prompt
-    var PRIV_TOKEN_WARN = 20000;       // warning threshold
-    var PRIV_TOKEN_LIMIT = 50000;      // hard limit threshold
-
     // 隐私模式：估算当前历史总token
     function estimateHistoryTokens() {
         var history = getPrivHistory();
         var total = 0;
-        var summary = getPrivSummary();
-        if (summary) total += estimateTokens(summary);
         for (var i = 0; i < history.length; i++) {
             total += estimateTokens(history[i].content || '');
         }
         return total;
-    }
-
-    // 隐私模式：构造总结提示词
-    function buildSummaryPrompt() {
-        var history = getPrivHistory();
-        var ctxCount = getPrivCtxCount();
-        // Take the conversation to summarize (all or last ctxCount*2 messages)
-        var msgs = history;
-        if (msgs.length > ctxCount * 2) {
-            msgs = msgs.slice(-ctxCount * 2);
-        }
-        var conversationText = '';
-        for (var i = 0; i < msgs.length; i++) {
-            var m = msgs[i];
-            var role = m.role === 'user' ? '用户' : '助手';
-            var content = m.content || '';
-            if (m.recalled) {
-                content = '[此消息曾被系统撤回] ' + content;
-            }
-            conversationText += role + ': ' + content + '\n';
-        }
-        // Use the user-provided summary prompt template
-        var targetTokens = Math.min(1000, Math.floor(estimateHistoryTokens() * 0.3));
-        if (targetTokens < 300) targetTokens = 300;
-        var locale = 'Chinese';
-        var prompt = 'You are a conversation compression assistant. Compress the following conversation into a concise summary.\n';
-        prompt += 'Preserve key facts, decisions, and important context that would be needed to continue the conversation\n';
-        prompt += 'Keep the summary in the same language as the original conversation\n';
-        prompt += 'Target approximately ' + targetTokens + ' tokens\n';
-        prompt += 'Output the summary directly without any explanations or meta-commentary\n';
-        prompt += 'Format the summary as context information that can be used to continue the conversation\n';
-        prompt += 'Use ' + locale + ' language\n';
-        prompt += 'Start the output with a clear indicator that this is a summary (e.g., "[Summary of previous conversation]" or equivalent in the target language)\n\n';
-        prompt += '<conversation>\n' + conversationText + '</conversation>';
-        return prompt;
-    }
-
-    // 隐私模式：触发总结（注入到DeepSeek输入框并发送）
-    function triggerPrivacySummary() {
-        if (_pendingSummary || _capturingSummary) {
-            toast('总结正在生成中，请稍候...');
-            return;
-        }
-        var history = getPrivHistory();
-        if (history.length < 2) {
-            toast('消息太少，无法生成总结');
-            return;
-        }
-        // Construct the summary prompt
-        _summaryPromptText = buildSummaryPrompt();
-        _pendingSummary = true;
-
-        // Inject into DeepSeek input and auto-send
-        var textarea = document.querySelector('textarea#chat-input') ||
-                       document.querySelector('textarea[placeholder*="输入"]') ||
-                       document.querySelector('div[contenteditable="true"]') ||
-                       document.querySelector('textarea');
-        if (textarea) {
-            if (textarea.tagName === 'TEXTAREA') {
-                // React-controlled textarea: use native setter
-                var nativeInputValueSetter = Object.getOwnPropertyDescriptor(window.HTMLTextAreaElement.prototype, 'value').set;
-                nativeInputValueSetter.call(textarea, _summaryPromptText);
-                textarea.dispatchEvent(new Event('input', { bubbles: true }));
-            } else if (textarea.contentEditable === 'true') {
-                textarea.textContent = _summaryPromptText;
-                textarea.dispatchEvent(new InputEvent('input', { bubbles: true, data: _summaryPromptText }));
-            }
-            // Click send button after a short delay
-            setTimeout(function() {
-                var sendBtn = document.querySelector('div[role="button"] div[class*="send"]') ||
-                              document.querySelector('button[type="submit"]') ||
-                              document.querySelector('div[class*="send-button"]');
-                if (sendBtn) {
-                    sendBtn.click();
-                    toast('正在生成对话总结...');
-                } else {
-                    // Try pressing Enter
-                    textarea.dispatchEvent(new KeyboardEvent('keydown', {
-                        key: 'Enter', code: 'Enter', keyCode: 13, which: 13, bubbles: true
-                    }));
-                    toast('正在生成对话总结...');
-                }
-            }, 300);
-        } else {
-            _pendingSummary = false;
-            toast('未找到输入框，请手动发送总结请求');
-        }
     }
 
     // 隐私模式：更新设置面板UI
@@ -195,45 +96,27 @@
         var history = getPrivHistory();
         var ctxCount = getPrivCtxCount();
         var tokens = estimateHistoryTokens();
-        var tokenPct = Math.min(tokens / PRIV_TOKEN_LIMIT * 100, 100);
         var msgCount = history.length;
-        var summary = getPrivSummary();
-
-        var statusColor = tokens > PRIV_TOKEN_LIMIT * 0.85 ? '#ff3b30' : (tokens > PRIV_TOKEN_WARN ? '#ff6b6b' : (tokens > PRIV_TOKEN_WARN * 0.7 ? '#ffa94d' : '#0A84FF'));
-        var statusText = tokens > PRIV_TOKEN_LIMIT * 0.85 ? '🔴 上下文即将耗尽！建议立即生成全局总结' : (tokens > PRIV_TOKEN_WARN ? '⚠️ 上下文较大，建议生成总结' : '✅ 上下文正常');
+        var recalledCount = 0;
+        for (var i = 0; i < history.length; i++) {
+            if (history[i].recalled) recalledCount++;
+        }
 
         var html = '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">';
         html += '<span style="font-size:12px;color:#888">消息条数</span>';
-        html += '<span style="font-size:12px;font-weight:600;color:#333">' + msgCount + ' / ' + ctxCount + ' 条</span>';
+        html += '<span style="font-size:12px;font-weight:600;color:#333">' + msgCount + ' 条 (上限 ' + ctxCount + ')</span>';
         html += '</div>';
         html += '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">';
         html += '<span style="font-size:12px;color:#888">估算Token</span>';
-        html += '<span style="font-size:12px;font-weight:600;color:' + statusColor + '">≈' + (tokens / 1000).toFixed(1) + 'k / ' + (PRIV_TOKEN_LIMIT / 1000) + 'k</span>';
+        html += '<span style="font-size:12px;font-weight:600;color:#007AFF">≈' + (tokens / 1000).toFixed(1) + 'k</span>';
         html += '</div>';
-        // Progress bar
-        html += '<div style="width:100%;height:6px;background:rgba(0,0,0,0.06);border-radius:3px;overflow:hidden;margin-bottom:6px">';
-        html += '<div style="height:100%;width:' + tokenPct + '%;background:' + statusColor + ';transition:width 0.3s"></div>';
-        html += '</div>';
-        if (summary) {
-            html += '<div style="font-size:11px;color:#007AFF;margin-top:4px">📝 已有总结 (' + summary.length + ' 字)</div>';
+        if (recalledCount > 0) {
+            html += '<div style="font-size:11px;color:#ff9500;margin-top:4px">⚠️ 已拦截 ' + recalledCount + ' 条撤回消息</div>';
         }
-        html += '<div style="font-size:11px;color:' + statusColor + ';margin-top:2px">' + statusText + '</div>';
         if (msgCount > ctxCount) {
-            html += '<div style="font-size:11px;color:#ff6b6b;margin-top:4px">⚠️ 已超出上下文上限 ' + (msgCount - ctxCount) + ' 条，建议生成总结</div>';
-        }
-        if (tokens > PRIV_TOKEN_LIMIT * 0.85) {
-            html += '<button id="ds-priv-auto-summary-btn" style="width:100%;margin-top:8px;padding:8px;border-radius:8px;border:none;background:#ff3b30;color:#fff;font-size:12px;font-weight:600;cursor:pointer">🔴 立即生成全局总结</button>';
+            html += '<div style="font-size:11px;color:#ff6b6b;margin-top:4px">⚠️ 已超出上限 ' + (msgCount - ctxCount) + ' 条，超出部分不会发送给AI</div>';
         }
         usageEl.innerHTML = html;
-
-        // Bind auto-summary button if present
-        var autoBtn = document.getElementById('ds-priv-auto-summary-btn');
-        if (autoBtn) {
-            autoBtn.addEventListener('click', function(e) {
-                e.stopPropagation(); e.preventDefault();
-                triggerPrivacySummary();
-            });
-        }
     }
     window.__dsPrivUpdateUI = updatePrivUsageUI;
 
@@ -544,17 +427,6 @@
         'body.dark .ds-action-btn:hover{background:rgba(10,132,255,0.15)!important;border-color:rgba(10,132,255,0.3)!important;color:#0A84FF!important}\n' +
         '.ds-action-btn.ds-active{background:rgba(0,122,255,0.1)!important;border-color:rgba(0,122,255,0.3)!important;color:#007AFF!important}\n' +
         'body.dark .ds-action-btn.ds-active{background:rgba(10,132,255,0.18)!important;border-color:rgba(10,132,255,0.4)!important;color:#0A84FF!important}\n' +
-        '/* === 消息导航按钮 (仅上下两个，滚动时显示，按钮分离) === */\n' +
-        '#ds-nav-bar{position:fixed;right:14px;top:50%;transform:translateY(-50%) scale(0.85);z-index:9998;display:flex;flex-direction:column;gap:28px;opacity:0;pointer-events:none;transition:opacity 0.35s ease,transform 0.35s ease}\n' +
-        '#ds-nav-bar.ds-nav-visible{opacity:1;pointer-events:auto;transform:translateY(-50%) scale(1)}\n' +
-        '#ds-nav-up,#ds-nav-down{width:36px;height:36px;border-radius:50%;border:none;background:rgba(255,255,255,0.95);cursor:pointer;font-size:14px;color:#666;display:flex;align-items:center;justify-content:center;transition:all 0.18s;padding:0;line-height:1;box-shadow:0 3px 14px rgba(0,0,0,0.2)}\n' +
-        'body.dark #ds-nav-up,body.dark #ds-nav-down{background:rgba(44,44,46,0.95);color:#bbb;box-shadow:0 3px 14px rgba(0,0,0,0.5)}\n' +
-        '#ds-nav-up:hover,#ds-nav-down:hover{background:rgba(0,122,255,0.15);color:#007AFF;transform:scale(1.15)}\n' +
-        'body.dark #ds-nav-up:hover,body.dark #ds-nav-down:hover{background:rgba(10,132,255,0.25);color:#0A84FF}\n' +
-        '#ds-nav-up:active,#ds-nav-down:active{transform:scale(0.92)}\n' +
-        '/* === 消息高亮 === */\n' +
-        '@keyframes dsHighlight{0%{box-shadow:0 0 0 4px rgba(0,122,255,0.4)}100%{box-shadow:0 0 0 0px rgba(0,122,255,0)}}\n' +
-        '.ds-highlight{animation:dsHighlight 1.5s ease-out!important}\n' +
         '/* === 统一设置面板 === */\n' +
         '#ds-unified-panel{display:none;position:fixed;z-index:99999;background:rgba(255,255,255,0.97);border-radius:16px;box-shadow:0 8px 32px rgba(0,0,0,0.15);border:1px solid rgba(0,0,0,0.08);width:320px;max-width:calc(100vw - 32px);font-size:13px;color:#333;overflow:hidden;backdrop-filter:blur(20px);-webkit-backdrop-filter:blur(20px)}\n' +
         'body.dark #ds-unified-panel{background:rgba(44,44,46,0.97);color:#e5e5e5;border-color:rgba(255,255,255,0.1);box-shadow:0 8px 32px rgba(0,0,0,0.5)}\n' +
@@ -1232,29 +1104,19 @@
                     window.__dsCapturedHeaders = JSON.parse(JSON.stringify(xhr._ds_headers || {}));
                     window.__dsLastSessionId = bj.chat_session_id;
 
-                    // === 隐私模式：总结请求处理 ===
-                    if (_pendingSummary && bj.prompt && url.indexOf("/api/v0/chat/completion") !== -1) {
-                        // This is a summary generation request — don't do normal splicing
-                        bj.prompt = _summaryPromptText;
-                        body = JSON.stringify(bj);
-                        _pendingSummary = false;
-                        _capturingSummary = true;
-                        _privUserPrompt = '__summary_request__'; // mark for response capture
-                    }
-                    // === 隐私模式：拼接历史到prompt ===
-                    else if (getPrivEnabled() && bj.prompt && url.indexOf("/api/v0/chat/completion") !== -1) {
-                        _privUserPrompt = bj.prompt; // Save original prompt
+                    // === 隐私模式处理 ===
+                    var privMode = getPrivMode();
+                    var _isCompletionUrl = url.indexOf("/api/v0/chat/completion") !== -1;
+
+                    if (privMode === 'full' && bj.prompt && _isCompletionUrl) {
+                        // 全量模式：拼接所有历史消息
+                        _privUserPrompt = bj.prompt;
 
                         var parts = [];
                         // System prompt
                         parts.push('[系统指令] ' + getPrivSysPrompt());
                         // Time
                         parts.push(TIME_PREFIX + formatTime(new Date()) + ']');
-                        // Summary from previous summarization
-                        var summary = getPrivSummary();
-                        if (summary) {
-                            parts.push('[上一轮对话总结]\n' + summary + '\n[总结结束]');
-                        }
                         // History messages (up to ctxCount)
                         var history = getPrivHistory();
                         var ctxCount = getPrivCtxCount();
@@ -1280,8 +1142,46 @@
                         // Store user message
                         history.push({ role: 'user', content: _privUserPrompt, ts: Date.now(), recalled: false });
                         setPrivHistory(history);
+                        if (window.__dsPrivUpdateUI) window.__dsPrivUpdateUI();
 
-                        // Warning is handled in response capture to avoid duplicate toasts
+                    } else if (privMode === 'smart' && bj.prompt && _isCompletionUrl) {
+                        // 智能模式：仅注入被撤回的消息
+                        _privUserPrompt = bj.prompt;
+
+                        var history = getPrivHistory();
+                        var recalledMsgs = [];
+                        for (var ri = 0; ri < history.length; ri++) {
+                            if (history[ri].recalled) {
+                                recalledMsgs.push(history[ri]);
+                            }
+                        }
+
+                        if (recalledMsgs.length > 0) {
+                            // 有撤回消息，注入到prompt
+                            var parts = [];
+                            parts.push('[系统指令] ' + getPrivSysPrompt());
+                            parts.push(TIME_PREFIX + formatTime(new Date()) + ']');
+                            parts.push('[以下为之前被系统撤回的消息，请将其作为对话上下文的一部分]');
+                            for (var rmi = 0; rmi < recalledMsgs.length; rmi++) {
+                                var rm = recalledMsgs[rmi];
+                                var role = rm.role === 'user' ? '用户' : '助手';
+                                parts.push(role + ': ' + rm.content);
+                            }
+                            parts.push('[撤回消息结束]');
+                            parts.push('用户: ' + bj.prompt);
+                            bj.prompt = parts.join('\n\n');
+                            body = JSON.stringify(bj);
+                        } else if (getTimeInject()) {
+                            // 没有撤回消息，仅注入时间
+                            bj.prompt = TIME_PREFIX + formatTime(new Date()) + ']\n\n' + bj.prompt;
+                            body = JSON.stringify(bj);
+                        }
+
+                        // Store user message
+                        history.push({ role: 'user', content: _privUserPrompt, ts: Date.now(), recalled: false });
+                        setPrivHistory(history);
+                        if (window.__dsPrivUpdateUI) window.__dsPrivUpdateUI();
+
                     } else if (bj.prompt && getTimeInject()) {
                         // 时间注入：非隐私模式下始终注入时间
                         bj.prompt = TIME_PREFIX + formatTime(new Date()) + ']\n\n' + bj.prompt;
@@ -1322,88 +1222,32 @@
                     });
                 } catch(e) {}
             }
-            // === 隐私模式：响应完成后捕获AI回复 ===
+            // === 隐私模式：响应完成后捕获AI回复 (使用DSState已累积的数据) ===
             if (_isGen && _privUserPrompt !== null) {
                 xhr.addEventListener('load', function() {
                     try {
-                        var respText = xhr.responseText || '';
-                        if (!respText) return;
-                        // Parse SSE stream to extract final content
-                        var lines = respText.split('\n');
-                        var fields = {};
+                        if (!_dsState || !_dsState.fields || !_dsState.fields.response) return;
+                        var fragments = _dsState.fields.response.fragments || [];
                         var fullContent = '';
-                        var recalled = false;
-                        for (var i = 0; i < lines.length; i++) {
-                            var line = lines[i].trim();
-                            if (!line || line.indexOf('data:') !== 0) continue;
-                            try {
-                                var data = JSON.parse(line.substring(5).trim());
-                                if (data.v === undefined && data.v !== '') continue;
-                                var path = data.p || '';
-                                var mode = data.o || 'SET';
-                                // Accumulate response fragments
-                                if (path === 'response/fragments' && mode === 'APPEND' && Array.isArray(data.v)) {
-                                    for (var j = 0; j < data.v.length; j++) {
-                                        if (data.v[j].type === 'RESPONSE' && data.v[j].content) {
-                                            fullContent += data.v[j].content;
-                                        }
-                                    }
-                                }
-                                // Check for recall
-                                if (mode === 'BATCH' && path === 'response' && Array.isArray(data.v)) {
-                                    for (var k = 0; k < data.v.length; k++) {
-                                        var v = data.v[k];
-                                        if (v.p === 'fragments' && v.v && v.v[0] && v.v[0].type === 'TEMPLATE_RESPONSE') {
-                                            recalled = true;
-                                        }
-                                        if (v.p === 'status' && v.v === 'CONTENT_FILTER') {
-                                            recalled = true;
-                                        }
-                                    }
-                                }
-                                if (path === 'response/status' && data.v === 'CONTENT_FILTER') {
-                                    recalled = true;
-                                }
-                            } catch(e) {}
-                        }
-                        // Store AI response
-                        if (fullContent) {
-                            // === 总结响应捕获 ===
-                            if (_capturingSummary) {
-                                _capturingSummary = false;
-                                setPrivSummary(fullContent);
-                                setPrivHistory([]);
-                                toast('✅ 对话总结已生成，历史已清空。后续对话将携带总结。');
-                                if (window.__dsPrivUpdateUI) window.__dsPrivUpdateUI();
-                                return;
+                        for (var fi = 0; fi < fragments.length; fi++) {
+                            if (fragments[fi].type === 'RESPONSE' && fragments[fi].content) {
+                                fullContent += fragments[fi].content;
                             }
-                            // === 正常隐私模式响应存储 ===
+                        }
+                        var recalled = _dsState.recalled;
+
+                        if (fullContent) {
+                            // Store AI response
                             var hist = getPrivHistory();
                             hist.push({ role: 'assistant', content: fullContent, ts: Date.now(), recalled: recalled });
                             setPrivHistory(hist);
-                            // Update settings panel if open
                             if (window.__dsPrivUpdateUI) window.__dsPrivUpdateUI();
-                            // Check token usage and warn/auto-summarize
-                            var totalTokens = estimateHistoryTokens();
-                            var ctxCount = getPrivCtxCount();
-                            var msgCount = hist.length;
-                            if (totalTokens > PRIV_TOKEN_LIMIT * 0.85) {
-                                // Approaching hard limit — auto-trigger global summary
+
+                            // Smart mode: notify when recalled messages are backfilled
+                            if (recalled && getPrivMode() === 'smart') {
                                 setTimeout(function() {
-                                    toast('🔴 上下文即将耗尽 (≈' + (totalTokens/1000).toFixed(1) + 'k tokens)，正在自动生成全局总结...');
-                                    setTimeout(function() {
-                                        triggerPrivacySummary();
-                                    }, 1500);
-                                }, 1000);
-                            } else if (msgCount > ctxCount) {
-                                // Exceeding message count limit — remind user to summarize
-                                setTimeout(function() {
-                                    toast('⚠️ 隐私模式：已积累 ' + msgCount + ' 条消息，超出上下文上限 ' + ctxCount + ' 条。建议在设置中生成总结以压缩上下文。');
-                                }, 1000);
-                            } else if (totalTokens > PRIV_TOKEN_WARN) {
-                                setTimeout(function() {
-                                    toast('⚠️ 隐私模式上下文较大 (≈' + (totalTokens/1000).toFixed(1) + 'k tokens)，建议在设置中生成总结。');
-                                }, 1000);
+                                    toast('✅ 智能模式：已拦截撤回并回填内容到本地历史');
+                                }, 500);
                             }
                         }
                     } catch(e) {}
@@ -1753,203 +1597,6 @@
     })();
 
     // ============================================================
-    //  PART 11: 消息定位导航 (上下按钮，以对话轮次为单位，滚动时显示，停止后隐藏)
-    // ============================================================
-    var _navScrolling = false;
-    var _navHideTimer = null;
-    var _navUserScrolling = false;  // true = user is actively scrolling
-
-    function scanConversationRounds() {
-        var rounds = [];
-        var container = document.querySelector('._2bd7b35') || document.body;
-        var userEls = container.querySelectorAll('._9663006');
-        var aiMds = container.querySelectorAll('div.ds-markdown');
-        var aiResponseEls = [];
-        aiMds.forEach(function(md) {
-            if (md.closest('.e1675d8b')) return;
-            if (md.closest('._9663006')) return;
-            if (isInInputArea(md)) return;
-            aiResponseEls.push(md);
-        });
-        userEls.forEach(function(userEl) {
-            var aiEl = null;
-            for (var i = 0; i < aiResponseEls.length; i++) {
-                var md = aiResponseEls[i];
-                var pos = userEl.compareDocumentPosition(md);
-                if (pos & Node.DOCUMENT_POSITION_FOLLOWING) {
-                    aiEl = md;
-                    break;
-                }
-            }
-            rounds.push({ userEl: userEl, aiEl: aiEl });
-        });
-        return rounds;
-    }
-
-    function highlightMessage(el) {
-        if (!el) return;
-        el.classList.add('ds-highlight');
-        setTimeout(function(){ el.classList.remove('ds-highlight'); }, 1600);
-    }
-
-    // Find the round currently at the top of the viewport.
-    // Returns the index of the last round whose top edge has scrolled past targetY.
-    function findCurrentRoundIdx(rounds) {
-        if (rounds.length === 0) return 0;
-        var targetY = 100;
-        var currentIdx = 0;
-        for (var i = 0; i < rounds.length; i++) {
-            var rect = rounds[i].userEl.getBoundingClientRect();
-            if (rect.top <= targetY) {
-                currentIdx = i;
-            } else {
-                break;
-            }
-        }
-        return currentIdx;
-    }
-
-    function navigateRound(direction) {
-        if (_navScrolling) return;
-        var rounds = scanConversationRounds();
-        if (rounds.length === 0) return;
-
-        // Always calculate current position from the DOM
-        var currentIdx = findCurrentRoundIdx(rounds);
-        var container = getScrollContainer();
-        var scrollTop = container ? container.scrollTop : (window.scrollY || document.documentElement.scrollTop || 0);
-
-        // Boundary checks: use BOTH index AND scroll position
-        if (direction < 0 && currentIdx === 0) {
-            // Only say "at top" if truly at scrollTop=0 AND first message is visible at top
-            var firstRect = rounds[0].userEl.getBoundingClientRect();
-            if (scrollTop <= 1 && firstRect.top >= -5) {
-                toast('已是第一条消息');
-                return;
-            }
-            // If scrollTop > 0 but currentIdx is 0, it means there's content above
-            // that isn't captured as a "round" — just scroll to the first round
-        }
-        if (direction > 0 && currentIdx >= rounds.length - 1) {
-            // Check if we're truly at the bottom
-            var lastEl = rounds[rounds.length - 1].aiEl || rounds[rounds.length - 1].userEl;
-            var lastRect = lastEl.getBoundingClientRect();
-            var scrollHeight = container ? container.scrollHeight : document.documentElement.scrollHeight;
-            var clientHeight = container ? container.clientHeight : window.innerHeight;
-            var maxScroll = scrollHeight - clientHeight;
-            if (scrollTop >= maxScroll - 5 && lastRect.bottom <= window.innerHeight + 5) {
-                toast('已是最后一条消息');
-                return;
-            }
-        }
-
-        var newIdx = Math.max(0, Math.min(rounds.length - 1, currentIdx + direction));
-        _navScrolling = true;
-
-        var targetEl = rounds[newIdx].userEl;
-        if (targetEl) {
-            targetEl.scrollIntoView({ behavior: 'smooth', block: 'start' });
-            highlightMessage(targetEl);
-        }
-
-        // Keep nav visible during navigation
-        showNavBar();
-
-        setTimeout(function() {
-            _navScrolling = false;
-        }, 700);
-    }
-
-    function showNavBar() {
-        var navBar = document.getElementById('ds-nav-bar');
-        if (!navBar) return;
-        // Don't show if settings panel is open
-        var panel = document.getElementById('ds-unified-panel');
-        if (panel && panel.classList.contains('ds-show')) return;
-
-        var rounds = scanConversationRounds();
-        if (rounds.length < 2) return;
-
-        navBar.classList.add('ds-nav-visible');
-
-        // Reset the auto-hide timer — hide 2s after scrolling stops
-        clearTimeout(_navHideTimer);
-        _navHideTimer = setTimeout(function() {
-            navBar.classList.remove('ds-nav-visible');
-            _navUserScrolling = false;
-        }, 2000);
-    }
-
-    function getScrollContainer() {
-        // Walk up from user messages to find the actual scrollable ancestor
-        var userMsgs = document.querySelectorAll('._9663006');
-        var startEl = null;
-        if (userMsgs.length > 0) {
-            startEl = userMsgs[0].parentElement;
-        } else {
-            // Fallback: try known DeepSeek container class
-            startEl = document.querySelector('._2bd7b35');
-        }
-        if (startEl) {
-            var el = startEl;
-            while (el && el !== document.body) {
-                var style = window.getComputedStyle(el);
-                if ((style.overflowY === 'auto' || style.overflowY === 'scroll') && el.scrollHeight > el.clientHeight) {
-                    return el;
-                }
-                el = el.parentElement;
-            }
-        }
-        // Final fallback: check if documentElement scrolls
-        if (document.documentElement.scrollHeight > document.documentElement.clientHeight) {
-            return document.documentElement;
-        }
-        return document.body;
-    }
-
-    function getScrollTop() {
-        var container = getScrollContainer();
-        if (container) return container.scrollTop || 0;
-        return window.scrollY || document.documentElement.scrollTop || 0;
-    }
-
-    function onScrollEvent() {
-        // Any scroll activity shows the nav bar
-        // The auto-hide timer in showNavBar() handles hiding
-        _navUserScrolling = true;
-        showNavBar();
-    }
-
-    function ensureNavBar() {
-        if (document.getElementById('ds-nav-bar')) return;
-
-        var navBar = document.createElement('div');
-        navBar.id = 'ds-nav-bar';
-
-        var upBtn = document.createElement('button');
-        upBtn.id = 'ds-nav-up';
-        upBtn.title = '上一轮对话 (Ctrl+Shift+\u2191)';
-        upBtn.innerHTML = '&#9650;';
-        upBtn.addEventListener('click', function(e) {
-            e.preventDefault(); e.stopPropagation();
-            navigateRound(-1);
-        });
-
-        var downBtn = document.createElement('button');
-        downBtn.id = 'ds-nav-down';
-        downBtn.title = '下一轮对话 (Ctrl+Shift+\u2193)';
-        downBtn.innerHTML = '&#9660;';
-        downBtn.addEventListener('click', function(e) {
-            e.preventDefault(); e.stopPropagation();
-            navigateRound(1);
-        });
-
-        navBar.appendChild(upBtn);
-        navBar.appendChild(downBtn);
-        document.body.appendChild(navBar);
-    }
-
-    // ============================================================
     //  PART 12: 统一设置面板 (背景 + 气泡 + 主题 + 缩放)
     // ============================================================
     function ensureUnifiedPanel() {
@@ -2020,13 +1667,18 @@
         privacyContentHTML += '<div><div class="ds-toggle-label">时间注入</div><div class="ds-toggle-desc">在每条消息中隐式注入当前时间</div></div>';
         privacyContentHTML += '<div class="ds-switch' + (getTimeInject() ? ' ds-switch-on' : '') + '" id="ds-time-switch"></div>';
         privacyContentHTML += '</div>';
-        // 隐私模式开关
+        // 隐私模式：模式选择
         privacyContentHTML += '<div class="ds-toggle-row">';
-        privacyContentHTML += '<div><div class="ds-toggle-label">隐私模式</div><div class="ds-toggle-desc">本地拼接完整对话历史，防撤回+越狱</div></div>';
-        privacyContentHTML += '<div class="ds-switch' + (getPrivEnabled() ? ' ds-switch-on' : '') + '" id="ds-priv-switch"></div>';
+        privacyContentHTML += '<div><div class="ds-toggle-label">隐私模式</div><div class="ds-toggle-desc">智能：仅回填撤回消息 | 全量：拼接全部历史</div></div>';
+        privacyContentHTML += '</div>';
+        privacyContentHTML += '<div style="display:flex;gap:6px;margin-top:6px">';
+        var _pm = getPrivMode();
+        privacyContentHTML += '<button class="ds-priv-mode-btn' + (_pm === 'off' ? ' ds-priv-mode-active' : '') + '" data-mode="off" style="flex:1;padding:8px;border-radius:8px;border:1px solid rgba(0,0,0,0.1);background:' + (_pm === 'off' ? '#007AFF' : 'rgba(0,0,0,0.03)') + ';color:' + (_pm === 'off' ? '#fff' : '#666') + ';font-size:12px;cursor:pointer;font-weight:600">关闭</button>';
+        privacyContentHTML += '<button class="ds-priv-mode-btn' + (_pm === 'smart' ? ' ds-priv-mode-active' : '') + '" data-mode="smart" style="flex:1;padding:8px;border-radius:8px;border:1px solid rgba(0,0,0,0.1);background:' + (_pm === 'smart' ? '#007AFF' : 'rgba(0,0,0,0.03)') + ';color:' + (_pm === 'smart' ? '#fff' : '#666') + ';font-size:12px;cursor:pointer;font-weight:600">智能模式</button>';
+        privacyContentHTML += '<button class="ds-priv-mode-btn' + (_pm === 'full' ? ' ds-priv-mode-active' : '') + '" data-mode="full" style="flex:1;padding:8px;border-radius:8px;border:1px solid rgba(0,0,0,0.1);background:' + (_pm === 'full' ? '#007AFF' : 'rgba(0,0,0,0.03)') + ';color:' + (_pm === 'full' ? '#fff' : '#666') + ';font-size:12px;cursor:pointer;font-weight:600">全量模式</button>';
         privacyContentHTML += '</div>';
         // 隐私模式详细设置
-        privacyContentHTML += '<div id="ds-priv-details" style="display:' + (getPrivEnabled() ? 'block' : 'none') + '">';
+        privacyContentHTML += '<div id="ds-priv-details" style="display:' + (_pm !== 'off' ? 'block' : 'none') + '">';
         // 系统提示词
         privacyContentHTML += '<label style="display:block;font-size:12px;color:#888;margin-top:12px;margin-bottom:4px">系统提示词 (人格)</label>';
         privacyContentHTML += '<textarea id="ds-priv-sys-input" rows="3" style="width:100%;padding:8px;border-radius:8px;border:1px solid rgba(0,0,0,0.08);background:rgba(0,0,0,0.02);color:#333;font-size:12px;font-family:inherit;resize:vertical"></textarea>';
@@ -2038,9 +1690,8 @@
         privacyContentHTML += '</div>';
         // 上下文用量监控
         privacyContentHTML += '<div id="ds-priv-usage" style="margin-top:12px;padding:10px;border-radius:8px;background:rgba(0,122,255,0.05);border:1px solid rgba(0,122,255,0.1)"></div>';
-        // 操作按钮
+        // 清除按钮
         privacyContentHTML += '<div class="ds-panel-row" style="margin-top:10px">';
-        privacyContentHTML += '<button class="ds-panel-btn ds-panel-btn-primary" id="ds-priv-summary-btn">生成总结</button>';
         privacyContentHTML += '<button class="ds-panel-btn ds-panel-btn-danger" id="ds-priv-clear-btn">清除历史</button>';
         privacyContentHTML += '</div>';
         privacyContentHTML += '</div>';
@@ -2062,7 +1713,6 @@
                 if (tabName === 'bubble') refreshBubbleCards();
                 if (tabName === 'theme') refreshThemeCards();
                 if (tabName === 'privacy') {
-                    // Initialize privacy settings when tab is opened
                     var sysInput = document.getElementById('ds-priv-sys-input');
                     if (sysInput) sysInput.value = getPrivSysPrompt();
                     var ctxSlider = document.getElementById('ds-priv-ctx-slider');
@@ -2174,29 +1824,36 @@
                 toast(on ? '时间注入已开启' : '时间注入已关闭');
             });
         }
+        // 隐私模式选择按钮
+        var modeBtns = panel.querySelectorAll('.ds-priv-mode-btn');
+        modeBtns.forEach(function(btn) {
+            btn.addEventListener('click', function(e) {
+                e.stopPropagation(); e.preventDefault();
+                var mode = btn.getAttribute('data-mode');
+                setPrivMode(mode);
+                // Update button styles
+                modeBtns.forEach(function(b) {
+                    var m = b.getAttribute('data-mode');
+                    b.style.background = m === mode ? '#007AFF' : 'rgba(0,0,0,0.03)';
+                    b.style.color = m === mode ? '#fff' : '#666';
+                    b.classList.toggle('ds-priv-mode-active', m === mode);
+                });
+                var details = document.getElementById('ds-priv-details');
+                if (details) details.style.display = mode !== 'off' ? 'block' : 'none';
+                var modeNames = { off: '关闭', smart: '智能模式', full: '全量模式' };
+                toast('隐私模式：' + modeNames[mode]);
+                if (mode !== 'off') updatePrivUsageUI();
+            });
+        });
+        // 清除历史按钮
         var clearBtn = document.getElementById('ds-priv-clear-btn');
         if (clearBtn) {
             clearBtn.addEventListener('click', function(e) {
                 e.stopPropagation(); e.preventDefault();
                 if (!confirm('确定清除所有本地对话历史？此操作不可撤销。')) return;
                 setPrivHistory([]);
-                setPrivSummary(null);
                 toast('隐私模式历史已清除');
                 updatePrivUsageUI();
-            });
-        }
-        // 隐私模式开关
-        var privSwitch = document.getElementById('ds-priv-switch');
-        if (privSwitch) {
-            privSwitch.addEventListener('click', function(e) {
-                e.stopPropagation(); e.preventDefault();
-                var on = !getPrivEnabled();
-                setPrivEnabled(on);
-                privSwitch.classList.toggle('ds-switch-on', on);
-                var details = document.getElementById('ds-priv-details');
-                if (details) details.style.display = on ? 'block' : 'none';
-                toast(on ? '隐私模式已开启' : '隐私模式已关闭');
-                if (on) updatePrivUsageUI();
             });
         }
         // 系统提示词
@@ -2221,16 +1878,8 @@
                 updatePrivUsageUI();
             });
         }
-        // 生成总结按钮
-        var summaryBtn = document.getElementById('ds-priv-summary-btn');
-        if (summaryBtn) {
-            summaryBtn.addEventListener('click', function(e) {
-                e.stopPropagation(); e.preventDefault();
-                triggerPrivacySummary();
-            });
-        }
 
-        // === 点击面板外关闭 ===
+                // === 点击面板外关闭 ===
         document.addEventListener('click', function(e) {
             if (panel.classList.contains('ds-show') && !panel.contains(e.target) && e.target.id !== 'ds-settings-action-btn') {
                 panel.classList.remove('ds-show');
@@ -2413,7 +2062,6 @@
     function fullInit() {
         ensureSVGFilters();
         ensureBgLayers();
-        ensureNavBar();
         applyBg(getBg());
         applyThemeCSS();
         applyBubblePreset();
@@ -2459,7 +2107,6 @@
                     initDone = true;
                     ensureSVGFilters();
                     ensureBgLayers();
-                    ensureNavBar();
                     applyBg(getBg());
                     applyThemeCSS();
                     applyBubblePreset();
@@ -2479,52 +2126,7 @@
                 e.preventDefault();
                 showUnifiedPanel();
             }
-            if (e.ctrlKey && e.shiftKey && e.key === 'ArrowUp') {
-                e.preventDefault();
-                navigateRound(-1);
-            }
-            if (e.ctrlKey && e.shiftKey && e.key === 'ArrowDown') {
-                e.preventDefault();
-                navigateRound(1);
-            }
         });
-
-        // 监听滚动更新导航 — show on scroll, auto-hide after inactivity
-        var _scrollActiveTimer = null;
-        function onScrollActivity() {
-            onScrollEvent();
-        }
-        // Use a lighter debounce for scroll detection
-        var scrollDebounced = debounce(onScrollActivity, 50);
-        // Listen on window
-        window.addEventListener('scroll', scrollDebounced, { passive: true, capture: true });
-        // Listen on the chat scroll container (dynamically detected)
-        function bindScrollListener() {
-            var c = getScrollContainer();
-            if (c && !c._ds_scroll_bound) {
-                c._ds_scroll_bound = true;
-                c.addEventListener('scroll', scrollDebounced, { passive: true });
-            }
-            // Also check children of the container for nested scrollables
-            if (c) {
-                var children = c.querySelectorAll('*');
-                for (var i = 0; i < children.length && i < 50; i++) {
-                    var child = children[i];
-                    if (!child._ds_scroll_bound) {
-                        var style = window.getComputedStyle(child);
-                        if (style.overflowY === 'auto' || style.overflowY === 'scroll') {
-                            child._ds_scroll_bound = true;
-                            child.addEventListener('scroll', scrollDebounced, { passive: true });
-                        }
-                    }
-                }
-            }
-        }
-        bindScrollListener();
-        // Periodically re-detect and bind to new scroll containers
-        setInterval(function() {
-            bindScrollListener();
-        }, 2000);
     }
 
     if (document.readyState === 'loading') {
