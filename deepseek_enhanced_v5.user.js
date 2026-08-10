@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         DeepSeek 全功能增强
 // @namespace    http://tampermonkey.net/
-// @version      7.1
+// @version      7.2
 // @description  气泡分割 + 全局背景 + 全屏 + 防撤回 + 隐私模式(智能回填+全量拼接,按会话隔离) + 时间注入(全局) + Mermaid渲染 + 主题系统 + 气泡预设 + 缩放系统 + 消息导航
 // @author       Maid
 // @match        https://chat.deepseek.com/*
@@ -1475,11 +1475,12 @@
             if (document.getElementById(NAV_ID)) return;
 
             GM_addStyle(
-                '#' + NAV_ID + '{position:fixed;right:20px;bottom:80px;display:flex;flex-direction:column;gap:6px;z-index:99998;}' +
-                '.ds-nav-btn{width:38px;height:38px;border-radius:50%;background:rgba(0,122,255,0.9);color:#fff;display:flex;align-items:center;justify-content:center;cursor:pointer;box-shadow:0 2px 12px rgba(0,0,0,0.2);transition:all 0.2s;user-select:none;border:none;}' +
-                '.ds-nav-btn:hover{background:rgba(0,122,255,1);transform:scale(1.08);}' +
-                '.ds-nav-btn:active{transform:scale(0.95);}' +
-                '.ds-nav-btn svg{width:18px;height:18px;fill:currentColor;}' +
+                '#' + NAV_ID + '{position:fixed;right:4px;top:50%;transform:translateY(-50%);display:flex;flex-direction:column;gap:4px;z-index:99998;opacity:0.35;transition:opacity 0.25s;}' +
+                '#' + NAV_ID + ':hover{opacity:1;}' +
+                '.ds-nav-btn{width:26px;height:26px;border-radius:50%;background:rgba(0,122,255,0.75);color:#fff;display:flex;align-items:center;justify-content:center;cursor:pointer;box-shadow:0 1px 6px rgba(0,0,0,0.15);transition:all 0.2s;user-select:none;border:none;padding:0;}' +
+                '.ds-nav-btn:hover{background:rgba(0,122,255,1);transform:scale(1.12);}' +
+                '.ds-nav-btn:active{transform:scale(0.92);}' +
+                '.ds-nav-btn svg{width:13px;height:13px;fill:currentColor;}' +
                 '@keyframes ds-nav-flash{0%{box-shadow:0 0 0 0 rgba(0,122,255,0.6);}50%{box-shadow:0 0 0 8px rgba(0,122,255,0.2);}100%{box-shadow:0 0 0 0 rgba(0,122,255,0);}}' +
                 '.ds-nav-highlight{animation:ds-nav-flash 1.5s ease-out;outline:2px solid rgba(0,122,255,0.5);outline-offset:4px;border-radius:12px;}'
             );
