@@ -1,8 +1,8 @@
 // ==UserScript==
 // @name         DeepSeek 全功能增强
 // @namespace    http://tampermonkey.net/
-// @version      7.0
-// @description  气泡分割 + 全局背景 + 全屏 + 防撤回 + 隐私模式(智能回填+全量拼接,按会话隔离) + 时间注入(全局) + Mermaid渲染 + 主题系统 + 气泡预设 + 缩放系统
+// @version      7.1
+// @description  气泡分割 + 全局背景 + 全屏 + 防撤回 + 隐私模式(智能回填+全量拼接,按会话隔离) + 时间注入(全局) + Mermaid渲染 + 主题系统 + 气泡预设 + 缩放系统 + 消息导航
 // @author       Maid
 // @match        https://chat.deepseek.com/*
 // @grant        GM_setValue
@@ -1168,28 +1168,39 @@
                         if (window.__dsPrivUpdateUI) window.__dsPrivUpdateUI();
 
                     } else if (privMode === 'smart' && bj.prompt && _isCompletionUrl) {
-                        // 智能模式：仅注入被撤回的消息（按会话隔离）
+                        // 智能模式：撤回时回填整轮对话（用户消息+AI回复）
                         _privUserPrompt = bj.prompt;
 
                         var history = getPrivHistory(_privSessId);
-                        var recalledMsgs = [];
+                        // 找到所有被撤回的AI消息，并连同其对应的用户消息一起回填
+                        var recalledRounds = []; // 每个元素 = {user: 用户消息, assistant: AI撤回消息}
                         for (var ri = 0; ri < history.length; ri++) {
-                            if (history[ri].recalled) {
-                                recalledMsgs.push(history[ri]);
+                            if (history[ri].recalled && history[ri].role === 'assistant') {
+                                // 找到这条撤回AI消息对应的用户消息（向前找最近的user消息）
+                                var pairedUser = null;
+                                for (var ui = ri - 1; ui >= 0; ui--) {
+                                    if (history[ui].role === 'user') {
+                                        pairedUser = history[ui];
+                                        break;
+                                    }
+                                }
+                                recalledRounds.push({ user: pairedUser, assistant: history[ri] });
                             }
                         }
 
-                        if (recalledMsgs.length > 0) {
-                            // 有撤回消息，注入到prompt
+                        if (recalledRounds.length > 0) {
+                            // 有撤回消息，注入整轮对话到prompt
                             var parts = [];
                             parts.push(TIME_PREFIX + formatTime(new Date()) + ']');
-                            parts.push('[以下为之前被系统撤回的消息，请将其作为对话上下文的一部分]');
-                            for (var rmi = 0; rmi < recalledMsgs.length; rmi++) {
-                                var rm = recalledMsgs[rmi];
-                                var role = rm.role === 'user' ? '用户' : '助手';
-                                parts.push(role + ': ' + rm.content);
+                            parts.push('[以下为之前被系统撤回的完整对话轮次，请将其作为对话上下文的一部分]');
+                            for (var rri = 0; rri < recalledRounds.length; rri++) {
+                                var round = recalledRounds[rri];
+                                if (round.user) {
+                                    parts.push('用户: ' + round.user.content);
+                                }
+                                parts.push('助手: ' + round.assistant.content);
                             }
-                            parts.push('[撤回消息结束]');
+                            parts.push('[撤回对话结束]');
                             parts.push('用户: ' + bj.prompt);
                             bj.prompt = parts.join('\n\n');
                             body = JSON.stringify(bj);
@@ -1285,6 +1296,249 @@
             }
             return _origSend.call(this, body);
         };
+    })();
+
+    // ============================================================
+    //  PART 9.5: 消息导航 (上下按钮) — 参照 My-Prompt 项目实现
+    // ============================================================
+    (function() {
+        var NAV_ID = 'ds-nav-bar';
+        var navCurrentIndex = -1;
+        var navCachedMessages = [];
+        var navInitialized = false;
+
+        // DeepSeek 消息选择器（参照 My-Prompt 项目）
+        // 用户消息: .ds-message 不含 .ds-markdown 的
+        // AI消息: .ds-message 含 .ds-markdown 的
+        var USER_SEL = '.ds-message:not(:has(.ds-markdown))';
+        var AI_SEL = '.ds-message:has(.ds-markdown)';
+
+        // 获取消息文本
+        function getMsgText(el) {
+            if (!el) return '';
+            try {
+                var md = el.querySelector('.ds-markdown');
+                if (md) return (md.innerText || md.textContent || '').replace(/\s+/g, ' ').trim();
+                return (el.innerText || el.textContent || '').replace(/\s+/g, ' ').trim();
+            } catch(e) {
+                return '';
+            }
+        }
+
+        // 扫描所有消息，按绝对Y位置排序
+        function scanMessages() {
+            var msgs = [];
+            var userEls = document.querySelectorAll(USER_SEL);
+            var aiEls = document.querySelectorAll(AI_SEL);
+
+            userEls.forEach(function(el) {
+                var rect = el.getBoundingClientRect();
+                msgs.push({
+                    element: el,
+                    type: 'user',
+                    topPos: rect.top + window.scrollY,
+                    height: rect.height
+                });
+            });
+            aiEls.forEach(function(el) {
+                var rect = el.getBoundingClientRect();
+                msgs.push({
+                    element: el,
+                    type: 'ai',
+                    topPos: rect.top + window.scrollY,
+                    height: rect.height
+                });
+            });
+
+            // 按绝对Y位置排序
+            msgs.sort(function(a, b) { return a.topPos - b.topPos; });
+
+            navCachedMessages = msgs;
+            return msgs;
+        }
+
+        // 获取当前视口中心最近的消息索引
+        function getVisualIndex() {
+            if (!navCachedMessages || navCachedMessages.length === 0) return -1;
+            var viewportCenter = window.scrollY + window.innerHeight / 2;
+            var bestIdx = 0;
+            var bestDist = Infinity;
+            for (var i = 0; i < navCachedMessages.length; i++) {
+                var el = navCachedMessages[i].element;
+                var rect = el.getBoundingClientRect();
+                if (rect.height === 0 && rect.width === 0) continue;
+                var msgCenter = window.scrollY + rect.top + rect.height / 2;
+                var dist = Math.abs(viewportCenter - msgCenter);
+                if (dist < bestDist) {
+                    bestDist = dist;
+                    bestIdx = i;
+                }
+            }
+            return bestIdx;
+        }
+
+        // 找到可滚动的父容器
+        function getScrollParent(el) {
+            if (!el) return document.documentElement;
+            var parent = el.parentElement;
+            while (parent) {
+                var style = window.getComputedStyle(parent);
+                if (parent.scrollHeight > parent.clientHeight &&
+                    (style.overflowY === 'auto' || style.overflowY === 'scroll')) {
+                    return parent;
+                }
+                parent = parent.parentElement;
+            }
+            return document.documentElement;
+        }
+
+        // 高亮元素（移除class → 强制reflow → 重新添加class）
+        function highlightElement(el) {
+            if (!el) return;
+            el.classList.remove('ds-nav-highlight');
+            void el.offsetWidth; // 强制reflow，重启CSS动画
+            el.classList.add('ds-nav-highlight');
+            setTimeout(function() {
+                el.classList.remove('ds-nav-highlight');
+            }, 2000);
+        }
+
+        // 滚动到指定消息
+        function scrollToMessage(idx) {
+            if (!navCachedMessages || navCachedMessages.length === 0) return;
+            if (idx < 0) idx = 0;
+            if (idx >= navCachedMessages.length) idx = navCachedMessages.length - 1;
+
+            var msg = navCachedMessages[idx];
+            if (!msg || !msg.element) return;
+
+            // 检查元素是否还在DOM中
+            if (!document.body.contains(msg.element)) {
+                scanMessages();
+                if (idx < navCachedMessages.length) {
+                    msg = navCachedMessages[idx];
+                } else {
+                    return;
+                }
+            }
+
+            var el = msg.element;
+            try {
+                var scrollParent = getScrollParent(el);
+                var elRect = el.getBoundingClientRect();
+                var parentRect = scrollParent.getBoundingClientRect();
+                var parentScrollTop = (scrollParent === document.documentElement) ? window.scrollY : scrollParent.scrollTop;
+                var offset = elRect.top - parentRect.top + parentScrollTop;
+                // 将消息定位到视口30%处
+                var targetScroll = offset - scrollParent.clientHeight * 0.3;
+
+                if (scrollParent === document.documentElement) {
+                    window.scrollTo({ top: targetScroll, behavior: 'smooth' });
+                } else {
+                    scrollParent.scrollTo({ top: targetScroll, behavior: 'smooth' });
+                }
+
+                highlightElement(el);
+                navCurrentIndex = idx;
+            } catch(e) {
+                el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                highlightElement(el);
+                navCurrentIndex = idx;
+            }
+        }
+
+        // 导航到上/下一条消息
+        function navigateToMessage(direction) {
+            scanMessages();
+            if (navCachedMessages.length === 0) return;
+
+            var visualIdx = getVisualIndex();
+            var idx = navCurrentIndex;
+
+            // 如果当前索引无效，或与视觉索引偏差超过2，则同步到视觉索引
+            if (idx === -1 || (visualIdx !== -1 && Math.abs(visualIdx - idx) > 2)) {
+                idx = visualIdx;
+            }
+            if (idx === -1) idx = 0;
+
+            if (direction === 'prev') {
+                idx = idx - 1;
+            } else if (direction === 'next') {
+                idx = idx + 1;
+            }
+
+            scrollToMessage(idx);
+        }
+
+        // 创建导航栏UI
+        function createNavBar() {
+            if (document.getElementById(NAV_ID)) return;
+
+            GM_addStyle(
+                '#' + NAV_ID + '{position:fixed;right:20px;bottom:80px;display:flex;flex-direction:column;gap:6px;z-index:99998;}' +
+                '.ds-nav-btn{width:38px;height:38px;border-radius:50%;background:rgba(0,122,255,0.9);color:#fff;display:flex;align-items:center;justify-content:center;cursor:pointer;box-shadow:0 2px 12px rgba(0,0,0,0.2);transition:all 0.2s;user-select:none;border:none;}' +
+                '.ds-nav-btn:hover{background:rgba(0,122,255,1);transform:scale(1.08);}' +
+                '.ds-nav-btn:active{transform:scale(0.95);}' +
+                '.ds-nav-btn svg{width:18px;height:18px;fill:currentColor;}' +
+                '@keyframes ds-nav-flash{0%{box-shadow:0 0 0 0 rgba(0,122,255,0.6);}50%{box-shadow:0 0 0 8px rgba(0,122,255,0.2);}100%{box-shadow:0 0 0 0 rgba(0,122,255,0);}}' +
+                '.ds-nav-highlight{animation:ds-nav-flash 1.5s ease-out;outline:2px solid rgba(0,122,255,0.5);outline-offset:4px;border-radius:12px;}'
+            );
+
+            var bar = document.createElement('div');
+            bar.id = NAV_ID;
+
+            // 上按钮
+            var upBtn = document.createElement('button');
+            upBtn.className = 'ds-nav-btn';
+            upBtn.title = '上一条消息';
+            upBtn.innerHTML = '<svg fill="none" viewBox="0 0 20 20"><path fill="currentColor" d="M9.3 5.7a1 1 0 0 1 1.4 0l5.8 5.7a1 1 0 0 1-1.4 1.5L10 7.8l-5 5a1 1 0 1 1-1.5-1.4z"/></svg>';
+            upBtn.addEventListener('click', function(e) {
+                e.stopPropagation();
+                e.preventDefault();
+                navigateToMessage('prev');
+            });
+
+            // 下按钮
+            var downBtn = document.createElement('button');
+            downBtn.className = 'ds-nav-btn';
+            downBtn.title = '下一条消息';
+            downBtn.innerHTML = '<svg fill="none" viewBox="0 0 20 20" style="transform:rotate(180deg)"><path fill="currentColor" d="M9.3 5.7a1 1 0 0 1 1.4 0l5.8 5.7a1 1 0 0 1-1.4 1.5L10 7.8l-5 5a1 1 0 1 1-1.5-1.4z"/></svg>';
+            downBtn.addEventListener('click', function(e) {
+                e.stopPropagation();
+                e.preventDefault();
+                navigateToMessage('next');
+            });
+
+            bar.appendChild(upBtn);
+            bar.appendChild(downBtn);
+            document.body.appendChild(bar);
+        }
+
+        // 初始化
+        function initNav() {
+            if (navInitialized) return;
+            navInitialized = true;
+            createNavBar();
+
+            // 定期重新扫描消息（DOM可能动态更新）
+            setInterval(function() {
+                scanMessages();
+            }, 2000);
+        }
+
+        // 延迟初始化，等待页面加载完成
+        setTimeout(function() {
+            initNav();
+        }, 3000);
+
+        // 也监听DOM变化来初始化
+        var navObserver = new MutationObserver(function() {
+            if (!navInitialized && document.querySelector('.ds-message')) {
+                initNav();
+            }
+        });
+        navObserver.observe(document.body, { childList: true, subtree: true });
+        setTimeout(function() { navObserver.disconnect(); }, 15000);
     })();
 
     // ============================================================
