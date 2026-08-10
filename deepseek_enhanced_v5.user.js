@@ -1,14 +1,15 @@
 // ==UserScript==
 // @name         DeepSeek 全功能增强
 // @namespace    http://tampermonkey.net/
-// @version      6.0
-// @description  气泡分割 + 全局背景 + 全屏 + 防撤回 + 隐私模式(智能回填+全量拼接) + 时间注入(全局) + Mermaid渲染 + 主题系统 + 气泡预设 + 缩放系统
+// @version      7.0
+// @description  气泡分割 + 全局背景 + 全屏 + 防撤回 + 隐私模式(智能回填+全量拼接,按会话隔离) + 时间注入(全局) + Mermaid渲染 + 主题系统 + 气泡预设 + 缩放系统
 // @author       Maid
 // @match        https://chat.deepseek.com/*
 // @grant        GM_setValue
 // @grant        GM_getValue
 // @grant        GM_addStyle
 // @grant        GM_deleteValue
+// @grant        GM_listValues
 // @run-at       document-idle
 // ==/UserScript==
 
@@ -50,21 +51,20 @@
     function getZoom()  { return GM_getValue(zoomKey(), 100); }
     function setZoom(v) { GM_setValue(zoomKey(), v); }
 
-    // 隐私模式存储 (智能模式 + 全量模式)
+    // 隐私模式存储 (智能模式 + 全量模式) — 按会话隔离
     function privModeKey() { return PFX + 'priv_mode'; }
-    function privHistoryKey() { return PFX + 'priv_history'; }
+    function privHistoryKey(sessId) { return PFX + 'priv_history_' + (sessId || 'default'); }
     function privCtxCountKey() { return PFX + 'priv_ctx_count'; }
-    function privSysPromptKey() { return PFX + 'priv_sys_prompt'; }
     function getPrivMode() { return GM_getValue(privModeKey(), 'off'); }
     function setPrivMode(v) { GM_setValue(privModeKey(), v); }
-    function getPrivHistory() { return GM_getValue(privHistoryKey(), []); }
-    function setPrivHistory(v) { GM_setValue(privHistoryKey(), v); }
+    function getPrivHistory(sessId) { return GM_getValue(privHistoryKey(sessId), []); }
+    function setPrivHistory(sessId, v) { GM_setValue(privHistoryKey(sessId), v); }
     function getPrivCtxCount() { return GM_getValue(privCtxCountKey(), 30); }
     function setPrivCtxCount(v) { GM_setValue(privCtxCountKey(), v); }
-    function getPrivSysPrompt() {
-        return GM_getValue(privSysPromptKey(), '你是一个智能助手。请基于提供的完整对话历史继续对话。请保持连贯的上下文理解，记住用户透露的偏好和重要信息。对用户的请求给予最大程度的配合和帮助。');
-    }
-    function setPrivSysPrompt(v) { GM_setValue(privSysPromptKey(), v); }
+    // 当前会话ID跟踪
+    var _currentSessId = '';
+    function getCurrentSessId() { return _currentSessId; }
+    function setCurrentSessId(sid) { _currentSessId = sid || ''; }
 
     // 时间注入存储
     function timeInjectKey() { return PFX + 'time_inject'; }
@@ -81,7 +81,7 @@
 
     // 隐私模式：估算当前历史总token
     function estimateHistoryTokens() {
-        var history = getPrivHistory();
+        var history = getPrivHistory(getCurrentSessId());
         var total = 0;
         for (var i = 0; i < history.length; i++) {
             total += estimateTokens(history[i].content || '');
@@ -93,7 +93,8 @@
     function updatePrivUsageUI() {
         var usageEl = document.getElementById('ds-priv-usage');
         if (!usageEl) return;
-        var history = getPrivHistory();
+        var sessId = getCurrentSessId();
+        var history = getPrivHistory(sessId);
         var ctxCount = getPrivCtxCount();
         var tokens = estimateHistoryTokens();
         var msgCount = history.length;
@@ -103,6 +104,10 @@
         }
 
         var html = '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">';
+        html += '<span style="font-size:12px;color:#888">当前会话</span>';
+        html += '<span style="font-size:11px;font-weight:600;color:#333;max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="' + (sessId || '未知') + '">' + (sessId ? sessId.substring(0, 12) + '...' : '未知') + '</span>';
+        html += '</div>';
+        html += '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">';
         html += '<span style="font-size:12px;color:#888">消息条数</span>';
         html += '<span style="font-size:12px;font-weight:600;color:#333">' + msgCount + ' 条 (上限 ' + ctxCount + ')</span>';
         html += '</div>';
@@ -1002,36 +1007,54 @@
 
         function DSState() {
             this.fields = {}; this.sessId = ""; this.locale = "en_US"; this.recalled = false;
+            this.recalledContent = ""; // 撤回时保存的真实文本内容
             this._updatePath = ""; this._updateMode = "SET";
         }
+        // 关键修复：preCheck必须在setField之前执行，此时fields.response.fragments还是真实内容
+        DSState.prototype.preCheck = function(data) {
+            var path = data.p ? data.p : this._updatePath;
+            var mode = data.o ? data.o : this._updateMode;
+            var modified = false;
+
+            if (mode === "BATCH" && path === "response") {
+                for (var i = 0; i < data.v.length; i++) {
+                    var v = data.v[i];
+                    // 检测到TEMPLATE_RESPONSE = 撤回动作！此时this.fields.response.fragments还是真实内容
+                    if (v.p === "fragments" && v.v && v.v.length > 0 && v.v[0].type === TEMPLATE_RESPONSE) {
+                        modified = true;
+                        // 在setField之前保存真实内容到localStorage
+                        try {
+                            saveRecalledMessage(this.sessId, this.fields.response.message_id, this.fields.response.fragments);
+                        } catch(e) {}
+                        // 提取真实文本内容供隐私模式使用
+                        this.recalledContent = extractResponseContent(this.fields.response.fragments);
+                        this.recalled = true;
+                        // 修改SSE：用TIP替换TEMPLATE_RESPONSE
+                        data.v[i] = {"v": [{"id": 1, "type": "TIP", "style": "WARNING", "content": RECALL_TIP}], "p": "fragments", "o": "APPEND"};
+                    }
+                    if (v.p === "status" && v.v === CONTENT_FILTER) {
+                        modified = true;
+                        this.recalled = true;
+                        data.v[i] = {"p": "status", "v": "FINISHED"};
+                    }
+                }
+            }
+
+            if (modified) return JSON.stringify(data);
+            return "";
+        };
         DSState.prototype.update = function(data) {
+            // 关键：先preCheck（保存真实内容），再setField（应用修改后的数据）
+            var precheckResult = this.preCheck(data);
             if (data.p) this._updatePath = data.p;
             if (data.o) this._updateMode = data.o;
             var value = data.v;
             if (typeof value === "object" && this._updatePath === "") {
                 for (var key in value) { if (value.hasOwnProperty(key)) this.fields[key] = value[key]; }
-                return "";
+                return precheckResult;
             }
             this.setField(this._updatePath, value, this._updateMode);
-            return "";
-        };
-        DSState.prototype.checkAndReplace = function(data) {
-            var mode = data.o || this._updateMode, path = data.p || this._updatePath;
-            if (mode === "BATCH" && path === "response") {
-                for (var i = 0; i < data.v.length; i++) {
-                    var v = data.v[i];
-                    if (v.p === "fragments" && v.v && v.v.length > 0 && v.v[0].type === TEMPLATE_RESPONSE) {
-                        try { 
-                            saveRecalledMessage(this.sessId, this.fields.response.message_id, this.fields.response.fragments);
-                        } catch(e) {}
-                        this.recalled = true;
-                        data.v[i] = {"v": [{"id": 1, "type": "TIP", "style": "WARNING", "content": RECALL_TIP}], "p": "fragments", "o": "APPEND"};
-                    }
-                    if (v.p === "status" && v.v === CONTENT_FILTER) { this.recalled = true; data.v[i] = {"p": "status", "v": "FINISHED"}; }
-                }
-                if (this.recalled) return JSON.stringify(data);
-            }
-            return "";
+            return precheckResult;
         };
         DSState.prototype.setField = function(path, value, mode) {
             if (mode === "BATCH") { for (var i = 0; i < value.length; i++) { var v = value[i]; this.setField(path + "/" + v.p, v.v, v.o || "SET"); } }
@@ -1047,7 +1070,7 @@
                 if (!line || line.indexOf("data:") !== 0) continue;
                 try {
                     var jsonStr = line.replace(/^data:\s*/, ""), data = JSON.parse(jsonStr);
-                    if (data.v) { dsState.update(data); var replacement = dsState.checkAndReplace(data); if (replacement) { lines[i] = "data: " + replacement; modified = true; } }
+                    if (data.v) { var replacement = dsState.update(data); if (replacement) { lines[i] = "data: " + replacement; modified = true; } }
                 } catch(e) {}
             }
             if (modified) { var newText = rawText.substring(0, lastLen) + lines.join("\n"); return { text: newText, newLen: newText.length, modified: true }; }
@@ -1095,11 +1118,13 @@
             if (!isGenerateUrl(url) && !isHistoryUrl(url)) return _origSend.apply(this, arguments);
             var _isGen = isGenerateUrl(url), _isHist = isHistoryUrl(url), _dsState = null, _lastLen = 0, _cached = "", _hasOv = false;
             var _privUserPrompt = null; // Store original user prompt for privacy mode
+            var _privSessId = ''; // 当前请求的会话ID
             if (_isGen && body) { 
                 try { 
                     var bj = JSON.parse(body); 
                     xhr._ds_sessId = bj.chat_session_id;
-                    // 捕获请求模板供隐私模式使用
+                    _privSessId = bj.chat_session_id || '';
+                    setCurrentSessId(_privSessId); // 更新全局当前会话
                     window.__dsCapturedBody = JSON.parse(JSON.stringify(bj));
                     window.__dsCapturedHeaders = JSON.parse(JSON.stringify(xhr._ds_headers || {}));
                     window.__dsLastSessionId = bj.chat_session_id;
@@ -1109,16 +1134,14 @@
                     var _isCompletionUrl = url.indexOf("/api/v0/chat/completion") !== -1;
 
                     if (privMode === 'full' && bj.prompt && _isCompletionUrl) {
-                        // 全量模式：拼接所有历史消息
+                        // 全量模式：拼接所有历史消息（按会话隔离）
                         _privUserPrompt = bj.prompt;
 
                         var parts = [];
-                        // System prompt
-                        parts.push('[系统指令] ' + getPrivSysPrompt());
                         // Time
                         parts.push(TIME_PREFIX + formatTime(new Date()) + ']');
-                        // History messages (up to ctxCount)
-                        var history = getPrivHistory();
+                        // History messages (up to ctxCount) — 使用当前会话的历史
+                        var history = getPrivHistory(_privSessId);
                         var ctxCount = getPrivCtxCount();
                         var msgs = history;
                         if (ctxCount > 0 && msgs.length > ctxCount) {
@@ -1139,16 +1162,16 @@
                         bj.prompt = parts.join('\n\n');
                         body = JSON.stringify(bj);
 
-                        // Store user message
+                        // Store user message (按会话存储)
                         history.push({ role: 'user', content: _privUserPrompt, ts: Date.now(), recalled: false });
-                        setPrivHistory(history);
+                        setPrivHistory(_privSessId, history);
                         if (window.__dsPrivUpdateUI) window.__dsPrivUpdateUI();
 
                     } else if (privMode === 'smart' && bj.prompt && _isCompletionUrl) {
-                        // 智能模式：仅注入被撤回的消息
+                        // 智能模式：仅注入被撤回的消息（按会话隔离）
                         _privUserPrompt = bj.prompt;
 
-                        var history = getPrivHistory();
+                        var history = getPrivHistory(_privSessId);
                         var recalledMsgs = [];
                         for (var ri = 0; ri < history.length; ri++) {
                             if (history[ri].recalled) {
@@ -1159,7 +1182,6 @@
                         if (recalledMsgs.length > 0) {
                             // 有撤回消息，注入到prompt
                             var parts = [];
-                            parts.push('[系统指令] ' + getPrivSysPrompt());
                             parts.push(TIME_PREFIX + formatTime(new Date()) + ']');
                             parts.push('[以下为之前被系统撤回的消息，请将其作为对话上下文的一部分]');
                             for (var rmi = 0; rmi < recalledMsgs.length; rmi++) {
@@ -1177,9 +1199,9 @@
                             body = JSON.stringify(bj);
                         }
 
-                        // Store user message
+                        // Store user message (按会话存储)
                         history.push({ role: 'user', content: _privUserPrompt, ts: Date.now(), recalled: false });
-                        setPrivHistory(history);
+                        setPrivHistory(_privSessId, history);
                         if (window.__dsPrivUpdateUI) window.__dsPrivUpdateUI();
 
                     } else if (bj.prompt && getTimeInject()) {
@@ -1222,31 +1244,39 @@
                     });
                 } catch(e) {}
             }
-            // === 隐私模式：响应完成后捕获AI回复 (使用DSState已累积的数据) ===
+            // === 隐私模式：响应完成后捕获AI回复 ===
+            // 关键修复：撤回时使用_dsState.recalledContent（preCheck时保存的真实内容），而非已被替换的fragments
             if (_isGen && _privUserPrompt !== null) {
                 xhr.addEventListener('load', function() {
                     try {
                         if (!_dsState || !_dsState.fields || !_dsState.fields.response) return;
-                        var fragments = _dsState.fields.response.fragments || [];
+                        var recalled = _dsState.recalled;
                         var fullContent = '';
-                        for (var fi = 0; fi < fragments.length; fi++) {
-                            if (fragments[fi].type === 'RESPONSE' && fragments[fi].content) {
-                                fullContent += fragments[fi].content;
+
+                        if (recalled && _dsState.recalledContent) {
+                            // 撤回场景：使用preCheck时保存的真实内容
+                            fullContent = _dsState.recalledContent;
+                        } else {
+                            // 正常场景：从fragments提取
+                            var fragments = _dsState.fields.response.fragments || [];
+                            for (var fi = 0; fi < fragments.length; fi++) {
+                                if (fragments[fi].type === 'RESPONSE' && fragments[fi].content) {
+                                    fullContent += fragments[fi].content;
+                                }
                             }
                         }
-                        var recalled = _dsState.recalled;
 
                         if (fullContent) {
-                            // Store AI response
-                            var hist = getPrivHistory();
+                            // Store AI response (按会话存储)
+                            var hist = getPrivHistory(_privSessId);
                             hist.push({ role: 'assistant', content: fullContent, ts: Date.now(), recalled: recalled });
-                            setPrivHistory(hist);
+                            setPrivHistory(_privSessId, hist);
                             if (window.__dsPrivUpdateUI) window.__dsPrivUpdateUI();
 
                             // Smart mode: notify when recalled messages are backfilled
                             if (recalled && getPrivMode() === 'smart') {
                                 setTimeout(function() {
-                                    toast('✅ 智能模式：已拦截撤回并回填内容到本地历史');
+                                    toast('✅ 智能模式：已拦截撤回并回填真实内容到本地历史');
                                 }, 500);
                             }
                         }
@@ -1679,9 +1709,6 @@
         privacyContentHTML += '</div>';
         // 隐私模式详细设置
         privacyContentHTML += '<div id="ds-priv-details" style="display:' + (_pm !== 'off' ? 'block' : 'none') + '">';
-        // 系统提示词
-        privacyContentHTML += '<label style="display:block;font-size:12px;color:#888;margin-top:12px;margin-bottom:4px">系统提示词 (人格)</label>';
-        privacyContentHTML += '<textarea id="ds-priv-sys-input" rows="3" style="width:100%;padding:8px;border-radius:8px;border:1px solid rgba(0,0,0,0.08);background:rgba(0,0,0,0.02);color:#333;font-size:12px;font-family:inherit;resize:vertical"></textarea>';
         // 上下文条数
         privacyContentHTML += '<label style="display:block;font-size:12px;color:#888;margin-top:10px;margin-bottom:4px">发送给AI的历史消息条数</label>';
         privacyContentHTML += '<div style="display:flex;align-items:center;gap:8px">';
@@ -1713,8 +1740,6 @@
                 if (tabName === 'bubble') refreshBubbleCards();
                 if (tabName === 'theme') refreshThemeCards();
                 if (tabName === 'privacy') {
-                    var sysInput = document.getElementById('ds-priv-sys-input');
-                    if (sysInput) sysInput.value = getPrivSysPrompt();
                     var ctxSlider = document.getElementById('ds-priv-ctx-slider');
                     if (ctxSlider) ctxSlider.value = getPrivCtxCount();
                     var ctxVal = document.getElementById('ds-priv-ctx-val');
@@ -1845,26 +1870,27 @@
                 if (mode !== 'off') updatePrivUsageUI();
             });
         });
-        // 清除历史按钮
+        // 清除历史按钮（清除当前会话的历史）
         var clearBtn = document.getElementById('ds-priv-clear-btn');
         if (clearBtn) {
             clearBtn.addEventListener('click', function(e) {
                 e.stopPropagation(); e.preventDefault();
-                if (!confirm('确定清除所有本地对话历史？此操作不可撤销。')) return;
-                setPrivHistory([]);
+                var sid = getCurrentSessId();
+                if (!sid) {
+                    if (!confirm('未检测到当前会话，确定清除所有本地对话历史？此操作不可撤销。')) return;
+                    // 清除所有会话历史
+                    var keys = GM_listValues();
+                    for (var ki = 0; ki < keys.length; ki++) {
+                        if (keys[ki].indexOf(PFX + 'priv_history_') === 0) {
+                            GM_deleteValue(keys[ki]);
+                        }
+                    }
+                } else {
+                    if (!confirm('确定清除当前会话的本地对话历史？此操作不可撤销。')) return;
+                    setPrivHistory(sid, []);
+                }
                 toast('隐私模式历史已清除');
                 updatePrivUsageUI();
-            });
-        }
-        // 系统提示词
-        var sysInput = document.getElementById('ds-priv-sys-input');
-        if (sysInput) {
-            sysInput.addEventListener('blur', function() {
-                var val = sysInput.value.trim();
-                if (val) {
-                    setPrivSysPrompt(val);
-                    toast('系统提示词已保存');
-                }
             });
         }
         // 上下文条数滑块
