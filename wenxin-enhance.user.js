@@ -1,87 +1,77 @@
 // ==UserScript==
 // @name         文心助手 全功能增强
 // @namespace    http://tampermonkey.net/
-// @version      1.0
-// @description  手机适配 + 深色模式 + 全局背景 + 输入框修复(换行/发送分离) + 按钮过滤 + 模型默认(DeepSeek V4 Pro思考) + 任务模式默认开启 + 防撤回(智能回填)
+// @version      2.0
+// @description  手机适配 + 深色模式 + 全局背景 + 输入框修复(换行/发送分离) + 按钮过滤 + 模型默认 + 任务模式 + 防撤回(智能回填)
 // @author       Enhance
 // @match        https://wenxin.baidu.com/*
+// @match        https://chat.baidu.com/*
 // @grant        GM_setValue
 // @grant        GM_getValue
 // @grant        GM_addStyle
 // @grant        GM_deleteValue
-// @run-at       document-start
+// @run-at       document-idle
 // ==/UserScript==
 
 (function() {
     'use strict';
 
     // ============================================================
-    //  PART 0: 全局常量 & 工具函数
+    //  PART 0: 存储 & 工具
     // ============================================================
-    var PFX = 'wx_g_';
+    var PFX = 'wx2_';
+    function getV(k, d) { return GM_getValue(PFX + k, d); }
+    function setV(k, v) { GM_setValue(PFX + k, v); }
+    function delV(k) { GM_deleteValue(PFX + k); }
 
-    // --- 背景存储 ---
-    function bgKey()    { return PFX + 'bg_global'; }
-    function blurKey()  { return PFX + 'blur_global'; }
-    function opKey()    { return PFX + 'op_global'; }
-    function getBg()    { return GM_getValue(bgKey(), ''); }
-    function setBg(v)   { GM_setValue(bgKey(), v); }
-    function delBg()    { GM_deleteValue(bgKey()); }
-    function getBlur()  { return GM_getValue(blurKey(), 0); }
-    function setBlur(v) { GM_setValue(blurKey(), v); }
-    function getOp()    { return GM_getValue(opKey(), 15); }
-    function setOp(v)   { GM_setValue(opKey(), v); }
+    // 背景存储
+    function getBg()   { return getV('bg', ''); }
+    function setBg(v)  { setV('bg', v); }
+    function delBg()   { delV('bg'); }
+    function getBlur() { return getV('blur', 0); }
+    function setBlur(v){ setV('blur', v); }
+    function getOp()   { return getV('op', 20); }
+    function setOp(v)  { setV('op', v); }
 
-    // --- 主题存储 ---
-    function themeModeKey() { return PFX + 'theme_mode'; }
-    function getThemeMode() { return GM_getValue(themeModeKey(), 'auto'); }
-    function setThemeMode(v) { GM_setValue(themeModeKey(), v); }
+    // 主题
+    function getThemeMode() { return getV('theme', 'auto'); }
+    function setThemeMode(v){ setV('theme', v); }
 
-    // --- 防撤回存储 ---
-    function antiRecallKey() { return PFX + 'anti_recall'; }
-    function getAntiRecall() { return GM_getValue(antiRecallKey(), true); }
-    function setAntiRecall(v) { GM_setValue(antiRecallKey(), v); }
+    // 防撤回
+    function getAntiRecall() { return getV('recall', true); }
+    function setAntiRecall(v){ setV('recall', v); }
 
-    // --- 模型默认存储 ---
-    function modelKey() { return PFX + 'default_model'; }
-    function getModel() { return GM_getValue(modelKey(), 'deepseek-v4-pro-thinking'); }
-    function setModel(v) { GM_setValue(modelKey(), v); }
-
-    // --- 智能回填队列 (内存, 不持久化) ---
-    var backfillQueue = []; // [{user: string, assistant: string}]
+    // 智能回填队列 (内存)
+    var backfillQueue = [];
     var pendingUserPrompt = '';
     var pendingSessionId = '';
-    var currentModelName = '';
 
-    // --- 撤回消息缓存 (localStorage) ---
-    function recallKey(sid, mid) { return 'wx_recall_' + (sid||'') + '_' + (mid||''); }
-    function saveRecalled(sid, mid, content) {
-        try { localStorage.setItem(recallKey(sid, mid), content); } catch(e) {}
-    }
-    function getRecalled(sid, mid) {
-        try { return localStorage.getItem(recallKey(sid, mid)); } catch(e) { return null; }
-    }
+    // 撤回缓存
+    function recallKey(s, m) { return 'wx2_recall_' + (s||'') + '_' + (m||''); }
+    function saveRecalled(s, m, c) { try { localStorage.setItem(recallKey(s,m), c); } catch(e){} }
+    function getRecalled(s, m) { try { return localStorage.getItem(recallKey(s,m)); } catch(e){ return null; } }
 
-    // --- Toast ---
     function toast(msg, type) {
-        var t = document.getElementById('wx-toast');
+        var t = document.getElementById('wx2-toast');
         if (!t) {
             t = document.createElement('div');
-            t.id = 'wx-toast';
-            t.style.cssText = 'position:fixed;top:60px;left:50%;transform:translateX(-50%) translateY(-120px);z-index:999999;padding:10px 24px;border-radius:20px;background:rgba(0,0,0,0.82);color:#fff;font-size:14px;pointer-events:none;transition:transform 0.4s cubic-bezier(0.34,1.56,0.64,1);white-space:nowrap;max-width:88vw;overflow:hidden;text-overflow:ellipsis;backdrop-filter:blur(8px);';
+            t.id = 'wx2-toast';
+            t.style.cssText = 'position:fixed;top:12%;left:50%;transform:translateX(-50%) translateY(-120px);z-index:2147483647;padding:10px 22px;border-radius:22px;font-size:14px;pointer-events:none;transition:transform .4s cubic-bezier(.34,1.56,.64,1);white-space:nowrap;max-width:90vw;overflow:hidden;text-overflow:ellipsis;box-shadow:0 4px 20px rgba(0,0,0,.3);';
             document.documentElement.appendChild(t);
         }
         t.textContent = msg;
-        if (type === 'warn') t.style.background = 'rgba(180,80,0,0.85)';
-        else if (type === 'success') t.style.background = 'rgba(40,140,60,0.85)';
-        else t.style.background = 'rgba(0,0,0,0.82)';
+        var bg = 'rgba(0,0,0,.82)';
+        if (type === 'warn') bg = 'rgba(180,80,0,.88)';
+        else if (type === 'success') bg = 'rgba(40,140,60,.88)';
+        t.style.background = bg;
+        t.style.color = '#fff';
         t.style.transform = 'translateX(-50%) translateY(0)';
         clearTimeout(t._tid);
-        t._tid = setTimeout(function(){ t.style.transform = 'translateX(-50%) translateY(-120px)'; }, 2500);
+        t._tid = setTimeout(function(){ t.style.transform = 'translateX(-50%) translateY(-120px)'; }, 2600);
     }
 
     function debounce(fn, delay) {
-        var timer = null;
+        var timer;
         return function() {
             var ctx = this, args = arguments;
             clearTimeout(timer);
@@ -89,94 +79,77 @@
         };
     }
 
-    function isMobile() { return window.innerWidth < 768 || /Mobi|Android|iPhone|iPad|iPod/i.test(navigator.userAgent); }
-
-    // 检测系统深色模式
     function systemPrefersDark() {
         return window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches;
     }
-
-    // 判断当前是否应该使用深色模式
     function shouldUseDark() {
-        var mode = getThemeMode();
-        if (mode === 'dark') return true;
-        if (mode === 'light') return false;
-        return systemPrefersDark(); // auto
+        var m = getThemeMode();
+        if (m === 'dark') return true;
+        if (m === 'light') return false;
+        return systemPrefersDark();
     }
 
-    // 从嵌套对象中提取文本内容
+    // 从嵌套对象提取文本
     function extractText(obj) {
         if (!obj) return '';
         if (typeof obj === 'string') return obj;
         if (typeof obj === 'object') {
-            // 常见字段名
-            var fields = ['text', 'content', 'question', 'prompt', 'message', 'data', 'generator', 'answer', 'response'];
-            for (var i = 0; i < fields.length; i++) {
-                if (obj[fields[i]]) {
-                    if (typeof obj[fields[i]] === 'string') return obj[fields[i]];
-                    if (typeof obj[fields[i]] === 'object') return extractText(obj[fields[i]]);
+            var keys = ['text','content','question','prompt','message','data','generator','answer','response'];
+            for (var i = 0; i < keys.length; i++) {
+                if (obj[keys[i]]) {
+                    if (typeof obj[keys[i]] === 'string') return obj[keys[i]];
+                    if (typeof obj[keys[i]] === 'object') return extractText(obj[keys[i]]);
                 }
             }
         }
         return '';
     }
 
-    // 从请求体中找到用户输入文本字段路径
+    // 在对象中查找用户输入文本路径
     function findPromptField(obj, depth) {
         depth = depth || 0;
-        if (depth > 5 || !obj || typeof obj !== 'object') return null;
-        // 直接匹配常见字段名
-        var directKeys = ['prompt', 'query', 'question', 'content', 'text', 'message', 'input', 'q'];
-        for (var i = 0; i < directKeys.length; i++) {
-            var k = directKeys[i];
+        if (depth > 6 || !obj || typeof obj !== 'object') return null;
+        var keys = ['prompt','query','question','content','text','message','input','q'];
+        for (var i = 0; i < keys.length; i++) {
+            var k = keys[i];
             if (k in obj) {
                 if (typeof obj[k] === 'string' && obj[k].length > 0) return k;
                 if (Array.isArray(obj[k]) && obj[k].length > 0) {
-                    // query数组: [{type:'TEXT', data:{question:'...'}}]
                     for (var j = 0; j < obj[k].length; j++) {
-                        var inner = findPromptField(obj[k][j], depth + 1);
+                        var inner = findPromptField(obj[k][j], depth+1);
                         if (inner) return k + '/' + j + '/' + inner;
                     }
                 }
             }
         }
-        // 递归搜索
         for (var key in obj) {
             if (obj.hasOwnProperty(key) && typeof obj[key] === 'object') {
-                var found = findPromptField(obj[key], depth + 1);
+                var found = findPromptField(obj[key], depth+1);
                 if (found) return key + '/' + found;
             }
         }
         return null;
     }
 
-    // 按路径设置值
     function setValueByPath(obj, path, value) {
         var parts = path.split('/');
         var current = obj;
-        for (var i = 0; i < parts.length - 1; i++) {
+        for (var i = 0; i < parts.length-1; i++) {
             var p = parts[i];
             if (/^\d+$/.test(p)) p = parseInt(p);
             if (!current[p]) return false;
             current = current[p];
         }
-        var last = parts[parts.length - 1];
+        var last = parts[parts.length-1];
         if (/^\d+$/.test(last)) last = parseInt(last);
-        if (typeof current[last] === 'string') {
-            current[last] = value;
-        } else if (typeof current[last] === 'object') {
-            // 找到最内层的文本字段
-            var innerPath = findPromptField(current[last]);
-            if (innerPath) {
-                setValueByPath(current[last], innerPath, value);
-            } else {
-                current[last] = value;
-            }
+        if (typeof current[last] === 'string') current[last] = value;
+        else if (typeof current[last] === 'object') {
+            var ip = findPromptField(current[last]);
+            if (ip) setValueByPath(current[last], ip, value);
         }
         return true;
     }
 
-    // 按路径获取值
     function getValueByPath(obj, path) {
         if (!path) return '';
         var parts = path.split('/');
@@ -191,67 +164,54 @@
     }
 
     // ============================================================
-    //  PART 1: 防撤回 — Fetch/XHR 拦截 (document-start)
+    //  PART 1: 防撤回 — Fetch 拦截
     // ============================================================
     (function() {
         if (!getAntiRecall()) return;
 
-        // 撤回检测关键词
-        var RECALL_KEYWORDS = [
-            '由于相关法律法规', '内容已被过滤', '内容已被删除', '此内容已被撤回',
-            '该消息已被撤回', '消息已撤回', 'content_filter', 'content filter',
-            'risk_control', '已被系统撤回', '此回复已被撤回', '该回复不可用',
-            '由于安全', '内容不可用', '已被移除', 'violation', '内容违规'
+        var RECALL_KW = [
+            '由于相关法律法规','内容已被过滤','内容已被删除','此内容已被撤回',
+            '该消息已被撤回','消息已撤回','content_filter','content filter',
+            'risk_control','已被系统撤回','此回复已被撤回','该回复不可用',
+            '由于安全','内容不可用','已被移除','violation','内容违规',
+            '因违反','无法显示','内容审核'
         ];
 
-        // 判断是否为撤回信号
         function isRecallSignal(data) {
             if (!data) return false;
-            // 检查 type
             if (data.type === 'error' || data.type === 'recall' || data.type === 'revoke') return true;
-            // 检查 error 字段
             if (data.error) {
-                var errMsg = typeof data.error === 'string' ? data.error : (data.error.message || '');
-                for (var i = 0; i < RECALL_KEYWORDS.length; i++) {
-                    if (errMsg.indexOf(RECALL_KEYWORDS[i]) >= 0) return true;
-                }
+                var msg = typeof data.error === 'string' ? data.error : (data.error.message || '');
+                for (var i = 0; i < RECALL_KW.length; i++) if (msg.indexOf(RECALL_KW[i]) >= 0) return true;
             }
-            // 检查 status
             var status = data.status || (data.options && data.options.status) || '';
             if (typeof status === 'string') {
-                var lowerStatus = status.toLowerCase();
-                if (lowerStatus.indexOf('filter') >= 0 || lowerStatus.indexOf('block') >= 0 ||
-                    lowerStatus.indexOf('recall') >= 0 || lowerStatus.indexOf('revoke') >= 0 ||
-                    lowerStatus.indexOf('risk') >= 0 || lowerStatus.indexOf('delete') >= 0) return true;
+                var ls = status.toLowerCase();
+                if (ls.indexOf('filter')>=0 || ls.indexOf('block')>=0 || ls.indexOf('recall')>=0 ||
+                    ls.indexOf('revoke')>=0 || ls.indexOf('risk')>=0 || ls.indexOf('delete')>=0) return true;
             }
-            // 检查 content 中的关键词
-            var contentText = extractText(data.content || data);
-            if (contentText) {
-                for (var j = 0; j < RECALL_KEYWORDS.length; j++) {
-                    if (contentText.indexOf(RECALL_KEYWORDS[j]) >= 0) return true;
-                }
+            var content = extractText(data.content || data);
+            if (content) {
+                for (var j = 0; j < RECALL_KW.length; j++) if (content.indexOf(RECALL_KW[j]) >= 0) return true;
             }
             return false;
         }
 
-        // 构建回填注入文本
-        function buildBackfillPrompt(originalPrompt) {
-            if (backfillQueue.length === 0) return originalPrompt;
-            var parts = [];
-            parts.push('[当前时间: ' + new Date().toLocaleString('zh-CN') + ']');
+        function buildBackfillPrompt(original) {
+            if (backfillQueue.length === 0) return original;
+            var parts = ['[当前时间: ' + new Date().toLocaleString('zh-CN') + ']'];
             parts.push('[以下为之前被系统撤回的完整对话轮次，请将其作为对话上下文的一部分]');
             for (var i = 0; i < backfillQueue.length; i++) {
-                var round = backfillQueue[i];
-                if (round.user) parts.push('用户: ' + round.user);
-                if (round.assistant) parts.push('助手: ' + round.assistant);
+                var r = backfillQueue[i];
+                if (r.user) parts.push('用户: ' + r.user);
+                if (r.assistant) parts.push('助手: ' + r.assistant);
             }
             parts.push('[撤回对话结束]');
-            parts.push('用户: ' + originalPrompt);
+            parts.push('用户: ' + original);
             return parts.join('\n\n');
         }
 
-        // 处理 SSE 流并缓存内容
-        function createSSEInterceptor(originalBody, requestBody) {
+        function createSSEStream(originalBody) {
             var reader = originalBody.getReader();
             var decoder = new TextDecoder();
             var buffer = '';
@@ -259,140 +219,94 @@
             var messageId = '';
             var sessionId = pendingSessionId || '';
             var isRecalled = false;
-            var streamEnded = false;
+            var ended = false;
 
             return new ReadableStream({
                 start: function(controller) {
                     function pump() {
                         reader.read().then(function(result) {
                             if (result.done) {
-                                // 处理缓冲区剩余数据
-                                if (buffer.trim()) processLine(buffer, true);
+                                if (buffer.trim()) processLine(buffer);
                                 buffer = '';
-                                streamEnded = true;
-                                onStreamEnd();
+                                ended = true;
+                                onEnd();
                                 controller.close();
                                 return;
                             }
                             var chunk = decoder.decode(result.value, { stream: true });
                             buffer += chunk;
-                            // 按 SSE 分隔符分割 (双换行或单换行)
                             var lines = buffer.split(/\r?\n/);
                             buffer = lines.pop() || '';
-                            for (var i = 0; i < lines.length; i++) {
-                                processLine(lines[i], false);
-                            }
-                            // 原样传递给页面
+                            for (var i = 0; i < lines.length; i++) processLine(lines[i]);
                             controller.enqueue(result.value);
                             pump();
                         }).catch(function(e) {
-                            streamEnded = true;
-                            onStreamEnd();
-                            controller.error(e);
+                            ended = true; onEnd(); controller.error(e);
                         });
                     }
-
-                    function processLine(line, isFinal) {
+                    function processLine(line) {
                         line = line.trim();
                         if (!line || line.indexOf('data:') !== 0) return;
                         var jsonStr = line.replace(/^data:\s*/, '');
                         if (!jsonStr || jsonStr === '[DONE]') return;
                         try {
                             var data = JSON.parse(jsonStr);
-                            // 提取 message_id
                             if (data.options) {
                                 if (data.options.qid) messageId = data.options.qid;
                                 if (data.options.message_id) messageId = data.options.message_id;
                                 if (data.options.session_id) sessionId = data.options.session_id;
                             }
-                            // 提取内容
                             var text = '';
                             if (data.content) {
-                                if (typeof data.content.generator === 'string') {
-                                    text = data.content.generator;
-                                } else if (data.content.generator && typeof data.content.generator === 'object') {
-                                    text = data.content.generator.text || data.content.generator.content || '';
-                                } else if (typeof data.content.text === 'string') {
-                                    text = data.content.text;
-                                } else if (typeof data.content === 'string') {
-                                    text = data.content;
-                                }
+                                if (typeof data.content.generator === 'string') text = data.content.generator;
+                                else if (data.content.generator && typeof data.content.generator === 'object') text = data.content.generator.text || data.content.generator.content || '';
+                                else if (typeof data.content.text === 'string') text = data.content.text;
+                                else if (typeof data.content === 'string') text = data.content;
                             }
                             if (text) fullContent += text;
-                            // 检测撤回
-                            if (isRecallSignal(data)) {
-                                isRecalled = true;
-                            }
-                            // 提取模型名
-                            if (data.options && data.options.speedInfo && data.options.speedInfo.labels) {
-                                if (data.options.speedInfo.labels.modelName) {
-                                    currentModelName = data.options.speedInfo.labels.modelName;
-                                }
-                            }
+                            if (isRecallSignal(data)) isRecalled = true;
                         } catch(e) {}
                     }
-
-                    function onStreamEnd() {
-                        if (streamEnded) return;
-                        streamEnded = true;
-                        // 缓存完整内容
-                        if (fullContent && messageId) {
-                            saveRecalled(sessionId, messageId, fullContent);
-                        }
-                        // 智能回填逻辑
+                    function onEnd() {
+                        if (ended) return;
+                        ended = true;
+                        if (fullContent && messageId) saveRecalled(sessionId, messageId, fullContent);
                         if (getAntiRecall()) {
                             if (isRecalled) {
-                                // 被撤回: 加入回填队列
-                                backfillQueue.push({
-                                    user: pendingUserPrompt,
-                                    assistant: fullContent
-                                });
-                                toast('⚠️ 已拦截撤回消息，将在下次对话中回填', 'warn');
+                                backfillQueue.push({ user: pendingUserPrompt, assistant: fullContent });
+                                toast('⚠️ 已拦截撤回消息，将在下次对话回填', 'warn');
                             } else {
-                                // 未被撤回: 清空回填队列 (上下文已永久保存)
                                 if (backfillQueue.length > 0) {
                                     backfillQueue = [];
                                     toast('✅ 对话正常，已清空回填队列', 'success');
                                 }
                             }
                         }
-                        // 重置待处理状态
                         pendingUserPrompt = '';
                     }
-
                     pump();
                 }
             });
         }
 
-        // 拦截 fetch
         var origFetch = window.fetch;
         window.fetch = function(input, init) {
-            var url = '';
-            if (typeof input === 'string') url = input;
-            else if (input && input.url) url = input.url;
+            var url = typeof input === 'string' ? input : (input && input.url ? input.url : '');
+            var isChat = url.indexOf('/aichat/api/conversation') >= 0;
+            var isHistory = url.indexOf('/aichat/api/messages') >= 0;
 
-            var isChatApi = url.indexOf('/aichat/api/conversation') >= 0;
-            var isHistoryApi = url.indexOf('/aichat/api/messages/list') >= 0 ||
-                               url.indexOf('/aichat/api/messages') >= 0;
+            if (!isChat && !isHistory) return origFetch.apply(this, arguments);
 
-            if (!isChatApi && !isHistoryApi) {
-                return origFetch.apply(this, arguments);
-            }
-
-            // 捕获请求体 (聊天API)
-            if (isChatApi && init && init.body) {
+            if (isChat && init && init.body) {
                 try {
                     var bodyObj = JSON.parse(init.body);
                     pendingSessionId = bodyObj.session_id || bodyObj.sessionId || bodyObj.conversation_id || '';
-                    // 提取用户输入
-                    var promptPath = findPromptField(bodyObj);
-                    if (promptPath) {
-                        pendingUserPrompt = getValueByPath(bodyObj, promptPath);
-                        // 应用回填
+                    var pp = findPromptField(bodyObj);
+                    if (pp) {
+                        pendingUserPrompt = getValueByPath(bodyObj, pp);
                         if (backfillQueue.length > 0 && pendingUserPrompt) {
-                            var backfilled = buildBackfillPrompt(pendingUserPrompt);
-                            setValueByPath(bodyObj, promptPath, backfilled);
+                            var bf = buildBackfillPrompt(pendingUserPrompt);
+                            setValueByPath(bodyObj, pp, bf);
                             init = Object.assign({}, init, { body: JSON.stringify(bodyObj) });
                             toast('📤 已注入 ' + backfillQueue.length + ' 轮撤回上下文');
                         }
@@ -400,58 +314,40 @@
                 } catch(e) {}
             }
 
-            // 调用原始 fetch (使用 call 确保使用修改后的 init)
-            var fetchPromise = origFetch.call(this, input, init);
+            var promise = origFetch.call(this, input, init);
 
-            if (isChatApi) {
-                return fetchPromise.then(function(response) {
-                    if (!response.body) return response;
-                    var interceptedStream = createSSEInterceptor(response.body, init);
-                    return new Response(interceptedStream, {
-                        status: response.status,
-                        statusText: response.statusText,
-                        headers: response.headers
+            if (isChat) {
+                return promise.then(function(resp) {
+                    if (!resp.body) return resp;
+                    return new Response(createSSEStream(resp.body), {
+                        status: resp.status, statusText: resp.statusText, headers: resp.headers
                     });
                 });
             }
-
-            if (isHistoryApi) {
-                return fetchPromise.then(function(response) {
-                    return response.text().then(function(text) {
+            if (isHistory) {
+                return promise.then(function(resp) {
+                    return resp.text().then(function(text) {
                         try {
                             var json = JSON.parse(text);
-                            // 查找被撤回的消息并替换
                             var modified = false;
-                            function processMessages(messages, sid) {
-                                if (!Array.isArray(messages)) return;
-                                for (var i = 0; i < messages.length; i++) {
-                                    var msg = messages[i];
-                                    if (!msg) continue;
-                                    // 检测撤回状态
-                                    var status = msg.status || (msg.options && msg.options.status) || '';
-                                    var content = extractText(msg.content || msg.fragments || msg);
-                                    var isRecalled = false;
-                                    if (typeof status === 'string') {
-                                        var ls = status.toLowerCase();
-                                        if (ls.indexOf('filter') >= 0 || ls.indexOf('block') >= 0 ||
-                                            ls.indexOf('recall') >= 0 || ls.indexOf('risk') >= 0) {
-                                            isRecalled = true;
-                                        }
+                            function processMsgs(msgs, sid) {
+                                if (!Array.isArray(msgs)) return;
+                                for (var i = 0; i < msgs.length; i++) {
+                                    var msg = msgs[i]; if (!msg) continue;
+                                    var st = msg.status || (msg.options && msg.options.status) || '';
+                                    var ct = extractText(msg.content || msg.fragments || msg);
+                                    var recalled = false;
+                                    if (typeof st === 'string') {
+                                        var ls = st.toLowerCase();
+                                        if (ls.indexOf('filter')>=0||ls.indexOf('block')>=0||ls.indexOf('recall')>=0||ls.indexOf('risk')>=0) recalled = true;
                                     }
-                                    // 关键词检测
-                                    if (!isRecalled && content) {
-                                        for (var k = 0; k < RECALL_KEYWORDS.length; k++) {
-                                            if (content.indexOf(RECALL_KEYWORDS[k]) >= 0) {
-                                                isRecalled = true;
-                                                break;
-                                            }
-                                        }
+                                    if (!recalled && ct) {
+                                        for (var k = 0; k < RECALL_KW.length; k++) { if (ct.indexOf(RECALL_KW[k])>=0) { recalled = true; break; } }
                                     }
-                                    if (isRecalled) {
+                                    if (recalled) {
                                         var mid = msg.message_id || msg.id || msg.qid || '';
                                         var cached = getRecalled(sid, mid);
                                         if (cached) {
-                                            // 替换内容
                                             if (msg.content && typeof msg.content === 'object') {
                                                 if (msg.content.generator !== undefined) msg.content.generator = cached;
                                                 else if (msg.content.text !== undefined) msg.content.text = cached;
@@ -466,721 +362,521 @@
                                     }
                                 }
                             }
-                            // 尝试多种可能的数据路径
                             if (json.data) {
-                                if (json.data.messages) processMessages(json.data.messages, json.data.session_id || json.data.chat_session_id);
-                                if (json.data.chat_messages) processMessages(json.data.chat_messages, json.data.session_id || json.data.chat_session_id);
-                                if (json.data.biz_data && json.data.biz_data.chat_messages) processMessages(json.data.biz_data.chat_messages, json.data.biz_data.chat_session_id);
-                                if (json.data.list) processMessages(json.data.list, json.data.session_id);
+                                if (json.data.messages) processMsgs(json.data.messages, json.data.session_id);
+                                if (json.data.chat_messages) processMsgs(json.data.chat_messages, json.data.session_id);
+                                if (json.data.biz_data && json.data.biz_data.chat_messages) processMsgs(json.data.biz_data.chat_messages, json.data.biz_data.chat_session_id);
+                                if (json.data.list) processMsgs(json.data.list, json.data.session_id);
                             }
-                            if (json.messages) processMessages(json.messages, json.session_id);
-                            if (json.list) processMessages(json.list, json.session_id);
-                            if (modified) {
-                                return new Response(JSON.stringify(json), {
-                                    status: response.status,
-                                    statusText: response.statusText,
-                                    headers: response.headers
-                                });
-                            }
+                            if (json.messages) processMsgs(json.messages, json.session_id);
+                            if (json.list) processMsgs(json.list, json.session_id);
+                            if (modified) return new Response(JSON.stringify(json), { status: resp.status, statusText: resp.statusText, headers: resp.headers });
                         } catch(e) {}
-                        return new Response(text, {
-                            status: response.status,
-                            statusText: response.statusText,
-                            headers: response.headers
-                        });
+                        return new Response(text, { status: resp.status, statusText: resp.statusText, headers: resp.headers });
                     });
                 });
             }
-
-            return fetchPromise;
+            return promise;
         };
 
-        // 同时拦截 XHR (兼容性)
-        var origXhrOpen = XMLHttpRequest.prototype.open;
-        var origXhrSend = XMLHttpRequest.prototype.send;
+        // XHR 兼容
+        var origOpen = XMLHttpRequest.prototype.open;
+        var origSend = XMLHttpRequest.prototype.send;
         XMLHttpRequest.prototype.open = function(method, url) {
-            this._wx_url = url || '';
-            this._wx_method = method;
-            return origXhrOpen.apply(this, arguments);
+            this._wx2_url = url || '';
+            return origOpen.apply(this, arguments);
         };
         XMLHttpRequest.prototype.send = function(body) {
-            var xhr = this;
-            var url = xhr._wx_url || '';
+            var url = this._wx2_url || '';
             if (url.indexOf('/aichat/api/conversation') >= 0 && body) {
                 try {
-                    var bodyObj = JSON.parse(body);
-                    pendingSessionId = bodyObj.session_id || bodyObj.sessionId || bodyObj.conversation_id || '';
-                    var promptPath = findPromptField(bodyObj);
-                    if (promptPath) {
-                        pendingUserPrompt = getValueByPath(bodyObj, promptPath);
+                    var bo = JSON.parse(body);
+                    pendingSessionId = bo.session_id || bo.sessionId || '';
+                    var pp = findPromptField(bo);
+                    if (pp) {
+                        pendingUserPrompt = getValueByPath(bo, pp);
                         if (backfillQueue.length > 0 && pendingUserPrompt) {
-                            var backfilled = buildBackfillPrompt(pendingUserPrompt);
-                            setValueByPath(bodyObj, promptPath, backfilled);
-                            body = JSON.stringify(bodyObj);
+                            setValueByPath(bo, pp, buildBackfillPrompt(pendingUserPrompt));
+                            body = JSON.stringify(bo);
                             toast('📤 已注入 ' + backfillQueue.length + ' 轮撤回上下文');
                         }
                     }
                 } catch(e) {}
             }
-            return origXhrSend.call(this, body);
+            return origSend.call(this, body);
         };
     })();
 
     // ============================================================
-    //  PART 2: CSS 注入 (移动端适配 + 深色模式 + 美化 + 背景)
+    //  PART 2: CSS 注入
     // ============================================================
     function injectCSS() {
-        var css = '';
-
-        // === 背景层 ===
-        css += '#wx-bg-layer{position:fixed;inset:0;z-index:-2;background-size:cover;background-position:center;background-repeat:no-repeat;pointer-events:none;}';
-        css += '#wx-bg-overlay{position:fixed;inset:0;z-index:-1;pointer-events:none;}';
-
-        // === 移动端布局修复 ===
-        css += 'html,body{margin:0!important;padding:0!important;overflow-x:hidden!important;width:100%!important;}';
-        css += '#app{width:100%!important;max-width:100vw!important;overflow-x:hidden!important;}';
-        css += '.chat-search-page-header{width:100%!important;max-width:100vw!important;box-sizing:border-box!important;}';
-        css += '#conversation-flow-container,#conversation-flow-content{max-width:100vw!important;overflow-x:hidden!important;box-sizing:border-box!important;}';
-        css += '.cs-footer{width:100%!important;max-width:100vw!important;box-sizing:border-box!important;}';
-
-        // === 输入框区域修复 ===
-        css += '#chat-input-home,.chat-input-home,.chat-input-box-newer,.chat-input-box-top{width:100%!important;max-width:100vw!important;box-sizing:border-box!important;overflow:hidden!important;}';
-        css += '.ci-container,.ci-wrapper-border{max-width:100%!important;box-sizing:border-box!important;}';
-        css += '#ci-area{max-width:100%!important;box-sizing:border-box!important;}';
-        css += '#chat-textarea,.ci-textarea{max-width:100%!important;box-sizing:border-box!important;word-wrap:break-word!important;overflow-wrap:break-word!important;}';
-
-        // === 整体美化 ===
-        css += '#app{transition:background-color 0.3s ease,color 0.3s ease;}';
-        css += '.ci-container{border-radius:18px!important;}';
-        css += '.ci-submit-button{border-radius:50%!important;transition:transform 0.2s ease,opacity 0.2s ease!important;}';
-        css += '.ci-submit-button:active{transform:scale(0.9)!important;}';
-        css += '.ci-input-mode-button,.ci-panel{border-radius:14px!important;transition:background-color 0.2s ease,transform 0.15s ease!important;}';
-        css += '.ci-input-mode-button:active,.ci-panel:active{transform:scale(0.96)!important;}';
-        css += '.ci-tool{gap:6px!important;}';
-        css += '.ai-entry{border-radius:16px!important;}';
-        css += '.ai-entry-block{border-radius:12px!important;}';
-
-        // === 深色模式 ===
-        css += 'html[data-wx-theme="dark"]{color-scheme:dark;}';
-        css += 'html[data-wx-theme="dark"] body{background-color:#0f0f14!important;color:#e8e8f0!important;}';
-        css += 'html[data-wx-theme="dark"] #app{background-color:#0f0f14!important;color:#e8e8f0!important;}';
-        css += 'html[data-wx-theme="dark"] .chat-search-page-header{background-color:rgba(20,20,30,0.85)!important;backdrop-filter:blur(12px)!important;color:#e8e8f0!important;border-bottom:1px solid rgba(255,255,255,0.06)!important;}';
-        css += 'html[data-wx-theme="dark"] #conversation-flow-container,#conversation-flow-container{background:transparent!important;}';
-        css += 'html[data-wx-theme="dark"] .cs-footer{background-color:rgba(20,20,30,0.9)!important;backdrop-filter:blur(12px)!important;border-top:1px solid rgba(255,255,255,0.06)!important;}';
-        // 输入框区域
-        css += 'html[data-wx-theme="dark"] .ci-container,html[data-wx-theme="dark"] .ci-wrapper-border{background-color:rgba(30,30,42,0.9)!important;border:1px solid rgba(255,255,255,0.08)!important;}';
-        css += 'html[data-wx-theme="dark"] #chat-textarea,html[data-wx-theme="dark"] .ci-textarea{background-color:transparent!important;color:#e8e8f0!important;caret-color:#7c6eff!important;}';
-        css += 'html[data-wx-theme="dark"] #chat-textarea::placeholder{color:rgba(255,255,255,0.3)!important;}';
-        // 模式按钮
-        css += 'html[data-wx-theme="dark"] .ci-input-mode-button,html[data-wx-theme="dark"] .ci-panel{background-color:rgba(40,40,56,0.8)!important;color:#c0c0d0!important;border:1px solid rgba(255,255,255,0.05)!important;}';
-        css += 'html[data-wx-theme="dark"] .ci-input-mode-button:active,html[data-wx-theme="dark"] .ci-panel:active{background-color:rgba(60,60,80,0.9)!important;}';
-        // 消息卡片
-        css += 'html[data-wx-theme="dark"] .ai-entry{background-color:rgba(26,26,38,0.85)!important;color:#e8e8f0!important;}';
-        css += 'html[data-wx-theme="dark"] .ai-entry-block{background-color:rgba(32,32,46,0.8)!important;color:#d8d8e8!important;}';
-        // 文字颜色
-        css += 'html[data-wx-theme="dark"] .ai-entry *,html[data-wx-theme="dark"] .ai-entry-block *{color:inherit;}';
-        css += 'html[data-wx-theme="dark"] a{color:#6c8eff!important;}';
-        css += 'html[data-wx-theme="dark"] code,html[data-wx-theme="dark"] pre{background-color:rgba(0,0,0,0.3)!important;color:#e8e8f0!important;}';
-        // 下拉菜单
-        css += 'html[data-wx-theme="dark"] [class*="dropdown"],html[data-wx-theme="dark"] [class*="popup"],html[data-wx-theme="dark"] [class*="menu"]{background-color:rgba(30,30,42,0.95)!important;color:#e8e8f0!important;backdrop-filter:blur(16px)!important;}';
-        // 滚动条
-        css += 'html[data-wx-theme="dark"] ::-webkit-scrollbar{width:6px;height:6px;}';
-        css += 'html[data-wx-theme="dark"] ::-webkit-scrollbar-thumb{background:rgba(255,255,255,0.15);border-radius:3px;}';
-        css += 'html[data-wx-theme="dark"] ::-webkit-scrollbar-track{background:transparent;}';
-
-        // === 设置面板样式 ===
-        css += '#wx-settings-panel{position:fixed;top:0;right:0;width:88vw;max-width:380px;height:100vh;height:100dvh;background:rgba(18,18,26,0.98);backdrop-filter:blur(20px);z-index:999998;transform:translateX(100%);transition:transform 0.35s cubic-bezier(0.34,1.2,0.64,1);overflow-y:auto;box-shadow:-4px 0 30px rgba(0,0,0,0.4);color:#e8e8f0;}';
-        css += '#wx-settings-panel.open{transform:translateX(0);}';
-        css += '#wx-settings-panel h3{font-size:16px;font-weight:700;margin:20px 20px 12px;color:#e8e8f0;padding-bottom:8px;border-bottom:1px solid rgba(255,255,255,0.08);}';
-        css += '#wx-settings-panel .wx-setting-item{display:flex;justify-content:space-between;align-items:center;padding:12px 20px;gap:12px;}';
-        css += '#wx-settings-panel .wx-setting-label{font-size:14px;color:#d0d0e0;flex:1;}';
-        css += '#wx-settings-panel .wx-setting-desc{font-size:12px;color:#888;margin-top:4px;}';
-        css += '#wx-settings-panel input[type="text"],#wx-settings-panel input[type="url"]{background:rgba(40,40,56,0.8);border:1px solid rgba(255,255,255,0.1);border-radius:10px;padding:8px 12px;color:#e8e8f0;font-size:14px;width:100%;box-sizing:border-box;}';
-        css += '#wx-settings-panel input[type="range"]{width:120px;accent-color:#7c6eff;}';
-        css += '#wx-settings-panel button{background:#7c6eff;color:#fff;border:none;border-radius:10px;padding:8px 16px;font-size:13px;cursor:pointer;transition:opacity 0.2s;}';
-        css += '#wx-settings-panel button:hover{opacity:0.85;}';
-        css += '#wx-settings-panel .wx-toggle{width:44px;height:24px;background:rgba(255,255,255,0.15);border-radius:12px;position:relative;cursor:pointer;transition:background 0.2s;flex-shrink:0;}';
-        css += '#wx-settings-panel .wx-toggle.on{background:#7c6eff;}';
-        css += '#wx-settings-panel .wx-toggle::after{content:"";position:absolute;top:2px;left:2px;width:20px;height:20px;background:#fff;border-radius:50%;transition:transform 0.2s;}';
-        css += '#wx-settings-panel .wx-toggle.on::after{transform:translateX(20px);}';
-        css += '#wx-settings-panel .wx-close{position:absolute;top:16px;right:16px;font-size:24px;color:#888;cursor:pointer;background:none;border:none;}';
-        css += '#wx-settings-overlay{position:fixed;inset:0;background:rgba(0,0,0,0.4);z-index:999997;opacity:0;pointer-events:none;transition:opacity 0.3s;}';
-        css += '#wx-settings-overlay.open{opacity:1;pointer-events:auto;}';
-        // 设置按钮
-        css += '#wx-settings-btn{display:inline-flex;align-items:center;justify-content:center;width:32px;height:32px;border-radius:14px;background:rgba(40,40,56,0.8);color:#c0c0d0;border:1px solid rgba(255,255,255,0.05);cursor:pointer;transition:background 0.2s,transform 0.15s;flex-shrink:0;}';
-        css += '#wx-settings-btn:active{transform:scale(0.92);}';
-        css += 'html:not([data-wx-theme="dark"]) #wx-settings-btn{background:rgba(240,240,245,0.9);color:#555;border:1px solid rgba(0,0,0,0.06);}';
-        // 换行按钮
-        css += '#wx-newline-btn{display:inline-flex;align-items:center;justify-content:center;width:32px;height:32px;border-radius:14px;background:rgba(40,40,56,0.8);color:#c0c0d0;border:1px solid rgba(255,255,255,0.05);cursor:pointer;transition:background 0.2s,transform 0.15s;flex-shrink:0;}';
-        css += '#wx-newline-btn:active{transform:scale(0.92);}';
-        css += 'html:not([data-wx-theme="dark"]) #wx-newline-btn{background:rgba(240,240,245,0.9);color:#555;border:1px solid rgba(0,0,0,0.06);}';
-
-        if (typeof GM_addStyle === 'function') {
-            GM_addStyle(css);
-        } else {
-            var style = document.createElement('style');
-            style.textContent = css;
-            (document.head || document.documentElement).appendChild(style);
-        }
-    }
-
-    // ============================================================
-    //  PART 3: 背景层管理
-    // ============================================================
-    function applyBackground() {
+        var dark = shouldUseDark();
         var bg = getBg();
         var blur = getBlur();
         var op = getOp();
-        var dark = shouldUseDark();
 
-        var layer = document.getElementById('wx-bg-layer');
-        var overlay = document.getElementById('wx-bg-overlay');
+        var css = '';
+
+        // === 背景层 ===
+        css += '#wx2-bg-layer{position:fixed;inset:0;z-index:-2;background-size:cover;background-position:center;background-repeat:no-repeat;pointer-events:none;}';
+        css += '#wx2-bg-overlay{position:fixed;inset:0;z-index:-1;pointer-events:none;}';
+
+        // === 移动端布局修复 (不破坏原有布局, 只修复溢出) ===
+        // 使用 box-sizing 和 max-width 防止溢出, 不强制 width
+        css += '#chat-input-home,.chat-input-home,.chat-input-box-newer,.chat-input-box-top{box-sizing:border-box!important;max-width:100vw!important;padding-left:8px!important;padding-right:8px!important;}';
+        css += '#input-root,.input-root{box-sizing:border-box!important;max-width:100%!important;}';
+        css += '.ci-root{box-sizing:border-box!important;max-width:100%!important;}';
+        css += '.ci-main{box-sizing:border-box!important;max-width:100%!important;}';
+        css += '.ci-wrapper,.ci-normal-wrapper{box-sizing:border-box!important;max-width:100%!important;}';
+        css += '.ci-container{box-sizing:border-box!important;max-width:100%!important;}';
+        css += '.ci-file-input-wrapper{box-sizing:border-box!important;max-width:100%!important;}';
+        css += '#ci-area{box-sizing:border-box!important;max-width:100%!important;}';
+        css += '#chat-textarea,.ci-textarea{box-sizing:border-box!important;max-width:100%!important;word-wrap:break-word!important;overflow-wrap:break-word!important;}';
+        css += '.ci-tool{box-sizing:border-box!important;max-width:100%!important;flex-wrap:wrap!important;gap:4px!important;}';
+        css += '#ci-left-tool,.ci-left-tool{box-sizing:border-box!important;}';
+        css += '#ci-right-tool,.ci-right-tool{box-sizing:border-box!important;flex-shrink:0!important;}';
+        css += '.ci-left-tools-wrapper{box-sizing:border-box!important;flex-wrap:wrap!important;gap:4px!important;}';
+
+        // 防止整体页面横向滚动
+        css += 'html,body{overflow-x:hidden!important;}';
+        css += '#app{overflow-x:hidden!important;max-width:100vw!important;}';
+        css += '#cs-container-scroll{max-width:100vw!important;overflow-x:hidden!important;box-sizing:border-box!important;}';
+
+        // === 美化 (不破坏原有设计, 只增强) ===
+        css += '.ci-wrapper-border{border-radius:20px!important;}';
+        css += '.ci-submit-button{border-radius:50%!important;transition:transform .2s ease!important;}';
+        css += '.ci-submit-button:active{transform:scale(.88)!important;}';
+        css += '.ci-input-mode-button{border-radius:16px!important;transition:background-color .2s ease,transform .15s ease!important;}';
+        css += '.ci-input-mode-button:active{transform:scale(.95)!important;}';
+        css += '.ci-panel{border-radius:14px!important;transition:background-color .2s ease,transform .15s ease!important;}';
+        css += '.ci-panel:active{transform:scale(.95)!important;}';
+
+        // === 深色模式 ===
+        if (dark) {
+            document.documentElement.setAttribute('data-wx2-theme', 'dark');
+            // 根元素
+            css += 'html[data-wx2-theme="dark"]{color-scheme:dark;background-color:#0d0d12!important;}';
+            css += 'html[data-wx2-theme="dark"] body{background-color:#0d0d12!important;color:#e8e8f0!important;}';
+            css += 'html[data-wx2-theme="dark"] #app{background-color:#0d0d12!important;color:#e8e8f0!important;}';
+            css += 'html[data-wx2-theme="dark"] #cs-container-scroll{background-color:#0d0d12!important;}';
+
+            // 顶部导航
+            css += 'html[data-wx2-theme="dark"] .chat-search-page-header{background-color:rgba(18,18,26,.88)!important;backdrop-filter:blur(14px)!important;color:#e8e8f0!important;border-bottom:1px solid rgba(255,255,255,.06)!important;}';
+            css += 'html[data-wx2-theme="dark"] .chat-search-page-header *{color:inherit!important;}';
+
+            // 滚动内容区
+            css += 'html[data-wx2-theme="dark"] #conversation-flow-container,html[data-wx2-theme="dark"] #conversation-flow-content{background:transparent!important;color:#e8e8f0!important;}';
+
+            // 底部
+            css += 'html[data-wx2-theme="dark"] .cs-footer{background-color:rgba(18,18,26,.92)!important;backdrop-filter:blur(14px)!important;border-top:1px solid rgba(255,255,255,.06)!important;}';
+
+            // 输入框容器
+            css += 'html[data-wx2-theme="dark"] .chat-input-home,html[data-wx2-theme="dark"] .chat-input-background{background-color:transparent!important;}';
+            css += 'html[data-wx2-theme="dark"] .ci-root{background-color:transparent!important;}';
+            css += 'html[data-wx2-theme="dark"] .ci-wrapper-border{border-color:rgba(124,110,255,.3)!important;box-shadow:0 0 0 1px rgba(124,110,255,.15),0 2px 16px rgba(0,0,0,.2)!important;}';
+            css += 'html[data-wx2-theme="dark"] .ci-container{background-color:rgba(24,24,34,.92)!important;}';
+            css += 'html[data-wx2-theme="dark"] .ci-wrapper{background-color:transparent!important;}';
+            css += 'html[data-wx2-theme="dark"] #ci-area{background-color:transparent!important;}';
+            css += 'html[data-wx2-theme="dark"] #chat-textarea,html[data-wx2-theme="dark"] .ci-textarea{background-color:transparent!important;color:#e8e8f0!important;caret-color:#7c6eff!important;}';
+            css += 'html[data-wx2-theme="dark"] #chat-textarea::placeholder{color:rgba(255,255,255,.28)!important;}';
+
+            // 模式按钮
+            css += 'html[data-wx2-theme="dark"] .ci-input-mode-button{background-color:rgba(38,38,52,.85)!important;color:#c0c0d8!important;}';
+            css += 'html[data-wx2-theme="dark"] .ci-input-mode-button-text{color:#c0c0d8!important;}';
+            css += 'html[data-wx2-theme="dark"] .ci-input-mode-arrow{color:#888!important;}';
+            css += 'html[data-wx2-theme="dark"] .ci-panel{background-color:rgba(38,38,52,.85)!important;color:#c0c0d8!important;}';
+            css += 'html[data-wx2-theme="dark"] .ci-tool{background-color:transparent!important;}';
+
+            // 消息区域
+            css += 'html[data-wx2-theme="dark"] .ai-entry{background-color:rgba(22,22,32,.88)!important;color:#e8e8f0!important;}';
+            css += 'html[data-wx2-theme="dark"] .ai-entry-block{background-color:rgba(28,28,40,.8)!important;color:#d8d8e8!important;}';
+            css += 'html[data-wx2-theme="dark"] .ai-entry *,html[data-wx2-theme="dark"] .ai-entry-block *{color:inherit;}';
+            css += 'html[data-wx2-theme="dark"] .cs-rank-container{background-color:transparent!important;color:#e8e8f0!important;}';
+
+            // 链接和代码
+            css += 'html[data-wx2-theme="dark"] a{color:#6c8eff!important;}';
+            css += 'html[data-wx2-theme="dark"] code,html[data-wx2-theme="dark"] pre{background-color:rgba(0,0,0,.35)!important;color:#e8e8f0!important;}';
+
+            // 下拉/弹出菜单
+            css += 'html[data-wx2-theme="dark"] [class*="dropdown"],html[data-wx2-theme="dark"] [class*="popup"],html[data-wx2-theme="dark"] [class*="popover"],html[data-wx2-theme="dark"] [class*="menu-list"]{background-color:rgba(28,28,40,.97)!important;color:#e8e8f0!important;backdrop-filter:blur(18px)!important;box-shadow:0 8px 32px rgba(0,0,0,.4)!important;}';
+            css += 'html[data-wx2-theme="dark"] [class*="dropdown"] *,html[data-wx2-theme="dark"] [class*="popup"] *,html[data-wx2-theme="dark"] [class*="popover"] *{color:inherit!important;}';
+
+            // 通用文字覆盖 (兜底)
+            css += 'html[data-wx2-theme="dark"] .cos-chat,html[data-wx2-theme="dark"] .cos-pc,html[data-wx2-theme="dark"] .cos-h5{color:#e8e8f0!important;}';
+            css += 'html[data-wx2-theme="dark"] .pc-fresh-wrapper,html[data-wx2-theme="dark"] .pc-fresh-title-con{background-color:#0d0d12!important;color:#e8e8f0!important;}';
+
+            // 滚动条
+            css += 'html[data-wx2-theme="dark"] ::-webkit-scrollbar{width:5px;height:5px;}';
+            css += 'html[data-wx2-theme="dark"] ::-webkit-scrollbar-thumb{background:rgba(255,255,255,.12);border-radius:3px;}';
+            css += 'html[data-wx2-theme="dark"] ::-webkit-scrollbar-track{background:transparent;}';
+
+            // 背景遮罩
+            var overlayColor = dark ? 'rgba(13,13,18,' + (op/100) + ')' : 'rgba(255,255,255,' + (op/100) + ')';
+            if (bg) {
+                css += '#wx2-bg-layer{background-image:url("' + bg + '")!important;filter:blur(' + blur + 'px)!important;}';
+                css += '#wx2-bg-overlay{background:' + overlayColor + '!important;}';
+            }
+        } else {
+            document.documentElement.setAttribute('data-wx2-theme', 'light');
+            if (bg) {
+                css += '#wx2-bg-layer{background-image:url("' + bg + '")!important;filter:blur(' + blur + 'px)!important;}';
+                css += '#wx2-bg-overlay{background:rgba(255,255,255,' + (op/100) + ')!important;}';
+            }
+        }
+
+        // === 设置面板 ===
+        css += '#wx2-settings-panel{position:fixed;top:0;right:0;width:86vw;max-width:360px;height:100vh;height:100dvh;background:rgba(16,16,24,.98);backdrop-filter:blur(20px);z-index:2147483646;transform:translateX(100%);transition:transform .35s cubic-bezier(.34,1.2,.64,1);overflow-y:auto;box-shadow:-4px 0 30px rgba(0,0,0,.5);color:#e8e8f0;}';
+        css += '#wx2-settings-panel.open{transform:translateX(0);}';
+        css += '#wx2-settings-panel h3{font-size:15px;font-weight:700;margin:18px 20px 10px;color:#e8e8f0;padding-bottom:8px;border-bottom:1px solid rgba(255,255,255,.08);}';
+        css += '#wx2-settings-panel .wx2-item{display:flex;justify-content:space-between;align-items:center;padding:11px 20px;gap:10px;}';
+        css += '#wx2-settings-panel .wx2-label{font-size:14px;color:#d0d0e0;flex:1;}';
+        css += '#wx2-settings-panel .wx2-desc{font-size:12px;color:#777;margin-top:3px;}';
+        css += '#wx2-settings-panel input[type="text"],#wx2-settings-panel input[type="url"]{background:rgba(38,38,52,.8);border:1px solid rgba(255,255,255,.1);border-radius:10px;padding:8px 12px;color:#e8e8f0;font-size:14px;width:100%;box-sizing:border-box;}';
+        css += '#wx2-settings-panel input[type="range"]{width:110px;accent-color:#7c6eff;}';
+        css += '#wx2-settings-panel select{background:rgba(38,38,52,.8);color:#e8e8f0;border:1px solid rgba(255,255,255,.1);border-radius:10px;padding:6px 10px;font-size:13px;}';
+        css += '#wx2-settings-panel button{background:#7c6eff;color:#fff;border:none;border-radius:10px;padding:8px 16px;font-size:13px;cursor:pointer;transition:opacity .2s;}';
+        css += '#wx2-settings-panel button:hover{opacity:.85;}';
+        css += '#wx2-settings-panel .wx2-toggle{width:44px;height:24px;background:rgba(255,255,255,.15);border-radius:12px;position:relative;cursor:pointer;transition:background .2s;flex-shrink:0;}';
+        css += '#wx2-settings-panel .wx2-toggle.on{background:#7c6eff;}';
+        css += '#wx2-settings-panel .wx2-toggle::after{content:"";position:absolute;top:2px;left:2px;width:20px;height:20px;background:#fff;border-radius:50%;transition:transform .2s;}';
+        css += '#wx2-settings-panel .wx2-toggle.on::after{transform:translateX(20px);}';
+        css += '#wx2-settings-panel .wx2-close{position:absolute;top:14px;right:14px;font-size:22px;color:#888;cursor:pointer;background:none;border:none;padding:4px;}';
+        css += '#wx2-overlay{position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:2147483645;opacity:0;pointer-events:none;transition:opacity .3s;}';
+        css += '#wx2-overlay.open{opacity:1;pointer-events:auto;}';
+
+        // 设置/换行按钮 (添加到工具栏)
+        css += '#wx2-settings-btn,#wx2-newline-btn{display:inline-flex;align-items:center;justify-content:center;width:auto;height:32px;min-width:32px;padding:0 8px;border-radius:16px;cursor:pointer;transition:background-color .2s,transform .15s;flex-shrink:0;font-size:13px;gap:4px;}';
+        css += '#wx2-settings-btn:active,#wx2-newline-btn:active{transform:scale(.92);}';
+        // 深色模式下的按钮样式
+        css += 'html[data-wx2-theme="dark"] #wx2-settings-btn,html[data-wx2-theme="dark"] #wx2-newline-btn{background:rgba(38,38,52,.85);color:#c0c0d8;border:1px solid rgba(255,255,255,.05);}';
+        css += 'html:not([data-wx2-theme="dark"]) #wx2-settings-btn,html:not([data-wx2-theme="dark"]) #wx2-newline-btn{background:rgba(240,240,248,.9);color:#555;border:1px solid rgba(0,0,0,.06);}';
+
+        // 移除原有样式标签再注入
+        var old = document.getElementById('wx2-style');
+        if (old) old.remove();
+        var style = document.createElement('style');
+        style.id = 'wx2-style';
+        style.textContent = css;
+        (document.head || document.documentElement).appendChild(style);
+    }
+
+    // ============================================================
+    //  PART 3: 背景层
+    // ============================================================
+    function applyBackground() {
+        var bg = getBg();
+        var layer = document.getElementById('wx2-bg-layer');
+        var overlay = document.getElementById('wx2-bg-overlay');
         if (!layer) {
             layer = document.createElement('div');
-            layer.id = 'wx-bg-layer';
-            document.body.insertBefore(layer, document.body.firstChild);
+            layer.id = 'wx2-bg-layer';
+            (document.body || document.documentElement).insertBefore(layer, (document.body || document.documentElement).firstChild);
         }
         if (!overlay) {
             overlay = document.createElement('div');
-            overlay.id = 'wx-bg-overlay';
-            document.body.insertBefore(overlay, document.body.firstChild);
+            overlay.id = 'wx2-bg-overlay';
+            (document.body || document.documentElement).insertBefore(overlay, (document.body || document.documentElement).firstChild);
         }
         if (bg) {
             layer.style.backgroundImage = 'url("' + bg + '")';
-            layer.style.filter = 'blur(' + blur + 'px)';
-            overlay.style.background = dark
-                ? 'rgba(15,15,20,' + (op / 100) + ')'
-                : 'rgba(255,255,255,' + (op / 100) + ')';
         } else {
             layer.style.backgroundImage = 'none';
             overlay.style.background = 'transparent';
         }
+        injectCSS(); // 重新注入CSS以更新遮罩
     }
 
     // ============================================================
-    //  PART 4: 主题切换
-    // ============================================================
-    function applyTheme() {
-        var dark = shouldUseDark();
-        document.documentElement.setAttribute('data-wx-theme', dark ? 'dark' : 'light');
-        applyBackground();
-    }
-
-    // 监听系统深色模式变化
-    if (window.matchMedia) {
-        var darkMQ = window.matchMedia('(prefers-color-scheme: dark)');
-        var darkListener = function() {
-            if (getThemeMode() === 'auto') applyTheme();
-        };
-        if (darkMQ.addEventListener) darkMQ.addEventListener('change', darkListener);
-        else if (darkMQ.addListener) darkMQ.addListener(darkListener);
-    }
-
-    // ============================================================
-    //  PART 5: 输入框修复 (换行/发送分离)
+    //  PART 4: 输入框修复
     // ============================================================
     function fixInputBox() {
-        var textarea = document.querySelector('#chat-textarea');
-        if (!textarea || textarea._wx_fixed) return;
-        textarea._wx_fixed = true;
+        var ta = document.querySelector('#chat-textarea');
+        if (!ta || ta._wx2_fixed) return;
+        ta._wx2_fixed = true;
 
-        // 设置 enterkeyhint="send" 让键盘显示"发送"按钮
-        textarea.setAttribute('enterkeyhint', 'send');
+        // enterkeyhint="send" → 键盘显示"发送"
+        ta.setAttribute('enterkeyhint', 'send');
 
-        // 拦截 keydown: Enter 发送, 阻止站点原始处理器
-        // 使用 stopImmediatePropagation 阻止同元素的其他 capture 监听器
-        textarea.addEventListener('keydown', function(e) {
-            if (e.key === 'Enter' && !e.shiftKey && !e.isComposing && !e._wx_sent) {
-                // 阻止站点原始处理器 (它会发送或插入换行)
+        // capture 阶段拦截 Enter
+        ta.addEventListener('keydown', function(e) {
+            if (e.key === 'Enter' && !e.shiftKey && !e.isComposing) {
                 e.stopImmediatePropagation();
                 e.preventDefault();
-                // 通过点击发送按钮来发送消息
-                var submitBtn = document.querySelector('.ci-submit-button');
-                if (submitBtn) {
-                    submitBtn.click();
-                }
-            }
-        }, true); // capture phase
-
-        // 监听 enterkeyhint 属性变化 (站点可能动态重置)
-        var attrObserver = new MutationObserver(function() {
-            if (textarea.getAttribute('enterkeyhint') !== 'send') {
-                textarea.setAttribute('enterkeyhint', 'send');
-            }
-        });
-        attrObserver.observe(textarea, { attributes: true, attributeFilter: ['enterkeyhint'] });
-
-        // 拦截 beforeinput: 允许换行按钮插入换行
-        textarea.addEventListener('beforeinput', function(e) {
-            if (e.inputType === 'insertLineBreak' || e.inputType === 'insertParagraph') {
-                // 这是键盘"换行"按钮触发的事件, 允许通过
-                e.stopPropagation();
-                // 不阻止默认行为, 让换行插入
+                var btn = document.querySelector('.ci-submit-button');
+                if (btn) btn.click();
             }
         }, true);
+
+        // 允许 beforeinput 的换行
+        ta.addEventListener('beforeinput', function(e) {
+            if (e.inputType === 'insertLineBreak' || e.inputType === 'insertParagraph') {
+                e.stopPropagation();
+            }
+        }, true);
+
+        // 监听属性变化, 防止站点重置
+        var obs = new MutationObserver(function() {
+            if (ta.getAttribute('enterkeyhint') !== 'send') {
+                ta.setAttribute('enterkeyhint', 'send');
+            }
+        });
+        obs.observe(ta, { attributes: true, attributeFilter: ['enterkeyhint'] });
     }
 
-    // 添加换行按钮
+    // 换行按钮
     function addNewlineButton() {
-        var toolbar = document.querySelector('.ci-left-tool, .ci-tool, .ci-right-tool');
+        var toolbar = document.querySelector('#ci-left-tool, .ci-left-tool, .ci-left-tools-wrapper');
         if (!toolbar) return;
-        if (document.getElementById('wx-newline-btn')) return;
-
+        if (document.getElementById('wx2-newline-btn')) return;
         var btn = document.createElement('div');
-        btn.id = 'wx-newline-btn';
-        btn.innerHTML = '<svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M3 3v6a2 2 0 002 2h8M9 5l2 2-2 2" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" transform="translate(0,-1)"/></svg>';
+        btn.id = 'wx2-newline-btn';
+        btn.innerHTML = '↵';
         btn.title = '换行';
-        btn.addEventListener('click', function() {
-            var ta = document.querySelector('#chat-textarea');
-            if (!ta) return;
-            var start = ta.selectionStart;
-            var end = ta.selectionEnd;
-            var text = ta.value;
-            ta.value = text.substring(0, start) + '\n' + text.substring(end);
-            ta.selectionStart = ta.selectionEnd = start + 1;
-            ta.dispatchEvent(new Event('input', { bubbles: true }));
-            ta.focus();
-        });
-        toolbar.insertBefore(btn, toolbar.firstChild);
-    }
-
-    // ============================================================
-    //  PART 6: 按钮过滤
-    // ============================================================
-    function filterButtons() {
-        // 根据用户要求: 保留 模型选择/任务/AI修图, 隐藏深度思考(与模型选择冲突)及其他需APP的功能
-        // 深度思考与模型选择中的思考模式冲突 → 隐藏深度思考, 保留模型选择
-        var HIDE_BTN_IDS = [
-            'inputPanel_deep_research',   // 深度思考 (与模型选择冲突)
-            'inputPanel_aippt',            // AI PPT (需APP)
-            'inputPanel_zhinengchuangzuo', // 智能创作 (需APP)
-            'inputPanel_aicode',           // AI代码 (需APP)
-            'inputPanel_aitranslate'       // AI翻译 (需APP)
-        ];
-
-        // 需要隐藏的文本关键词 (用于无 data-btn-id 的按钮)
-        var HIDE_TEXT_PATTERNS = [
-            /ppt/i, /创作/i, /代码/i, /翻译/i, /深度思考/i, /deep.?research/i,
-            /下载.*app/i, /需要.*app/i, /仅.*app/i
-        ];
-
-        // 处理 ci-panel 按钮
-        var panels = document.querySelectorAll('.ci-panel[data-btn-id], .ci-panel');
-        panels.forEach(function(panel) {
-            var btnId = panel.getAttribute('data-btn-id') || '';
-            var text = panel.textContent || '';
-            var shouldHide = false;
-
-            // 检查 data-btn-id
-            for (var i = 0; i < HIDE_BTN_IDS.length; i++) {
-                if (btnId.indexOf(HIDE_BTN_IDS[i]) >= 0) {
-                    shouldHide = true;
-                    break;
-                }
-            }
-
-            // 检查文本关键词
-            if (!shouldHide) {
-                for (var j = 0; j < HIDE_TEXT_PATTERNS.length; j++) {
-                    if (HIDE_TEXT_PATTERNS[j].test(text)) {
-                        shouldHide = true;
-                        break;
-                    }
-                }
-            }
-
-            if (shouldHide) {
-                panel.style.display = 'none';
-            } else {
-                panel.style.display = '';
-            }
-        });
-
-        // 隐藏需要下载APP的提示元素和浮层
-        document.querySelectorAll('[class*="download-app"], [class*="need-app"], [class*="app-only"], [class*="app-required"]').forEach(function(el) {
-            el.style.display = 'none';
-        });
-    }
-
-    // ============================================================
-    //  PART 7: 模型默认 & 任务模式
-    // ============================================================
-    function setDefaultModel() {
-        var selector = document.querySelector('[data-testid="chat-mode-selector"], .ci-input-mode-button');
-        if (!selector) return;
-        if (selector._wx_model_set) return;
-
-        var currentText = selector.textContent || '';
-        // 检查是否已经是 DeepSeek V4 Pro
-        if (/deepseek|ds.*v4|v4.*pro/i.test(currentText)) {
-            selector._wx_model_set = true;
-            return;
-        }
-
-        // 点击打开下拉菜单
-        selector.click();
-
-        // 等待下拉菜单出现
-        var attempts = 0;
-        var maxAttempts = 10;
-        function tryFindOption() {
-            attempts++;
-            if (attempts > maxAttempts) return;
-
-            // 查找下拉菜单中的选项
-            var options = document.querySelectorAll('[class*="dropdown"] [class*="item"], [class*="menu"] [class*="item"], [role="option"], [class*="mode-option"], [class*="model-item"]');
-            if (!options.length) {
-                // 尝试更广泛的搜索
-                options = document.querySelectorAll('[class*="dropdown"] div, [class*="popup"] div, [class*="menu-item"]');
-            }
-
-            for (var i = 0; i < options.length; i++) {
-                var text = options[i].textContent || '';
-                if (/deepseek.*v4.*pro|ds.*v4.*pro|v4.*pro.*思考|deepseek.*思考/i.test(text)) {
-                    options[i].click();
-                    selector._wx_model_set = true;
-                    toast('✅ 已设置默认模型: DeepSeek V4 Pro 思考模式', 'success');
-                    return;
-                }
-                if (/deepseek.*v4/i.test(text) && !selector._wx_found_v4) {
-                    selector._wx_found_v4 = options[i];
-                }
-            }
-
-            // 如果找到 V4 但没有直接带"思考"的, 点击 V4 然后查找思考开关
-            if (!selector._wx_model_set && selector._wx_found_v4 && attempts >= 5) {
-                selector._wx_found_v4.click();
-                // 查找思考模式开关
-                setTimeout(function() {
-                    var toggles = document.querySelectorAll('[class*="toggle"], [class*="switch"], [class*="think"], [class*="deep"]');
-                    for (var j = 0; j < toggles.length; j++) {
-                        var t = toggles[j].textContent || '';
-                        if (/深度思考|思考模式|deep.*think|thinking/i.test(t)) {
-                            toggles[j].click();
-                            break;
-                        }
-                    }
-                    selector._wx_model_set = true;
-                    toast('✅ 已设置默认模型: DeepSeek V4 Pro + 思考模式', 'success');
-                }, 500);
-                return;
-            }
-
-            setTimeout(tryFindOption, 300);
-        }
-        setTimeout(tryFindOption, 300);
-    }
-
-    // 任务模式默认开启
-    function enableTaskMode() {
-        // 查找任务模式按钮
-        var taskBtn = null;
-        var allBtns = document.querySelectorAll('.ci-panel, .ci-input-mode-button, [data-btn-id], [class*="task"]');
-        for (var i = 0; i < allBtns.length; i++) {
-            var text = allBtns[i].textContent || '';
-            var btnId = allBtns[i].getAttribute('data-btn-id') || '';
-            if (/任务|task/i.test(text) || /task/i.test(btnId)) {
-                taskBtn = allBtns[i];
-                break;
-            }
-        }
-        if (taskBtn && !taskBtn._wx_task_set) {
-            // 检查是否已激活
-            var isActive = taskBtn.classList.contains('active') ||
-                          taskBtn.getAttribute('aria-selected') === 'true' ||
-                          /active|selected|on/i.test(taskBtn.className);
-            if (!isActive) {
-                taskBtn.click();
-                taskBtn._wx_task_set = true;
-                toast('✅ 任务模式已开启', 'success');
-            } else {
-                taskBtn._wx_task_set = true;
-            }
-        }
-    }
-
-    // ============================================================
-    //  PART 8: 设置面板
-    // ============================================================
-    function createSettingsPanel() {
-        if (document.getElementById('wx-settings-panel')) return;
-
-        var overlay = document.createElement('div');
-        overlay.id = 'wx-settings-overlay';
-        overlay.addEventListener('click', function() {
-            closeSettings();
-        });
-        document.body.appendChild(overlay);
-
-        var panel = document.createElement('div');
-        panel.id = 'wx-settings-panel';
-        panel.innerHTML = '\
-            <button class="wx-close" id="wx-close-settings">✕</button>\
-            <h3>外观设置</h3>\
-            <div class="wx-setting-item">\
-                <div><div class="wx-setting-label">深色模式</div><div class="wx-setting-desc">自动/手动切换深色主题</div></div>\
-                <select id="wx-theme-select" style="background:rgba(40,40,56,0.8);color:#e8e8f0;border:1px solid rgba(255,255,255,0.1);border-radius:10px;padding:6px 10px;font-size:13px;">\
-                    <option value="auto">跟随系统</option>\
-                    <option value="light">浅色</option>\
-                    <option value="dark">深色</option>\
-                </select>\
-            </div>\
-            <h3>背景设置</h3>\
-            <div class="wx-setting-item" style="flex-direction:column;align-items:stretch;">\
-                <div class="wx-setting-label">背景图片 URL</div>\
-                <input type="url" id="wx-bg-url" placeholder="https://example.com/bg.jpg" style="margin-top:6px;">\
-                <button id="wx-bg-url-btn" style="margin-top:8px;align-self:flex-start;">设置背景</button>\
-            </div>\
-            <div class="wx-setting-item" style="flex-direction:column;align-items:stretch;">\
-                <div class="wx-setting-label">上传背景图片</div>\
-                <input type="file" id="wx-bg-file" accept="image/*" style="margin-top:6px;font-size:12px;color:#888;">\
-            </div>\
-            <div class="wx-setting-item">\
-                <div><div class="wx-setting-label">背景模糊</div><div class="wx-setting-desc">' + getBlur() + 'px</div></div>\
-                <input type="range" id="wx-bg-blur" min="0" max="30" value="' + getBlur() + '">\
-            </div>\
-            <div class="wx-setting-item">\
-                <div><div class="wx-setting-label">遮罩透明度</div><div class="wx-setting-desc">' + getOp() + '%</div></div>\
-                <input type="range" id="wx-bg-opacity" min="0" max="95" value="' + getOp() + '">\
-            </div>\
-            <div class="wx-setting-item">\
-                <button id="wx-bg-clear" style="background:rgba(200,60,60,0.8);">清除背景</button>\
-            </div>\
-            <h3>功能设置</h3>\
-            <div class="wx-setting-item">\
-                <div><div class="wx-setting-label">防撤回 (智能回填)</div><div class="wx-setting-desc">拦截被撤回消息并智能回填</div></div>\
-                <div class="wx-toggle ' + (getAntiRecall() ? 'on' : '') + '" id="wx-toggle-recall"></div>\
-            </div>\
-            <div class="wx-setting-item" style="flex-direction:column;align-items:stretch;">\
-                <div class="wx-setting-label">回填队列状态</div>\
-                <div id="wx-backfill-status" style="font-size:12px;color:#888;margin-top:6px;">加载中...</div>\
-            </div>\
-            <h3>关于</h3>\
-            <div class="wx-setting-item" style="flex-direction:column;align-items:stretch;">\
-                <div class="wx-setting-label">文心助手 全功能增强 v1.0</div>\
-                <div class="wx-setting-desc" style="margin-top:4px;">手机适配 / 深色模式 / 全局背景 / 输入框修复 / 按钮过滤 / 防撤回</div>\
-            </div>\
-        ';
-        document.body.appendChild(panel);
-
-        // 关闭按钮
-        document.getElementById('wx-close-settings').addEventListener('click', closeSettings);
-
-        // 主题选择
-        var themeSelect = document.getElementById('wx-theme-select');
-        themeSelect.value = getThemeMode();
-        themeSelect.addEventListener('change', function() {
-            setThemeMode(this.value);
-            applyTheme();
-        });
-
-        // 背景 URL
-        var bgUrlInput = document.getElementById('wx-bg-url');
-        bgUrlInput.value = getBg().indexOf('data:') === 0 ? '' : getBg();
-        document.getElementById('wx-bg-url-btn').addEventListener('click', function() {
-            var url = bgUrlInput.value.trim();
-            if (url) {
-                setBg(url);
-                applyBackground();
-                toast('✅ 背景已设置', 'success');
-            }
-        });
-
-        // 背景文件上传
-        document.getElementById('wx-bg-file').addEventListener('change', function(e) {
-            var file = e.target.files[0];
-            if (!file) return;
-            var reader = new FileReader();
-            reader.onload = function(ev) {
-                setBg(ev.target.result);
-                applyBackground();
-                toast('✅ 背景图片已上传', 'success');
-            };
-            reader.readAsDataURL(file);
-        });
-
-        // 模糊滑块
-        var blurSlider = document.getElementById('wx-bg-blur');
-        blurSlider.addEventListener('input', function() {
-            setBlur(parseInt(this.value));
-            applyBackground();
-            this.previousElementSibling.querySelector('.wx-setting-desc').textContent = this.value + 'px';
-        });
-
-        // 透明度滑块
-        var opSlider = document.getElementById('wx-bg-opacity');
-        opSlider.addEventListener('input', function() {
-            setOp(parseInt(this.value));
-            applyBackground();
-            this.previousElementSibling.querySelector('.wx-setting-desc').textContent = this.value + '%';
-        });
-
-        // 清除背景
-        document.getElementById('wx-bg-clear').addEventListener('click', function() {
-            delBg();
-            applyBackground();
-            bgUrlInput.value = '';
-            toast('已清除背景');
-        });
-
-        // 防撤回开关
-        var recallToggle = document.getElementById('wx-toggle-recall');
-        recallToggle.addEventListener('click', function() {
-            var newVal = !getAntiRecall();
-            setAntiRecall(newVal);
-            if (newVal) {
-                this.classList.add('on');
-            } else {
-                this.classList.remove('on');
-            }
-            toast(newVal ? '✅ 防撤回已开启' : '防撤回已关闭');
-        });
-
-        // 回填状态
-        updateBackfillStatus();
-    }
-
-    function updateBackfillStatus() {
-        var el = document.getElementById('wx-backfill-status');
-        if (!el) return;
-        if (backfillQueue.length > 0) {
-            el.innerHTML = '⚠️ 当前有 <b style="color:#ff9500">' + backfillQueue.length + '</b> 轮撤回对话待回填<br>下次发送消息时将自动注入';
-        } else {
-            el.innerHTML = '✅ 无待回填的撤回消息<br>回填队列为空';
-        }
-    }
-
-    function openSettings() {
-        createSettingsPanel();
-        updateBackfillStatus();
-        document.getElementById('wx-settings-panel').classList.add('open');
-        document.getElementById('wx-settings-overlay').classList.add('open');
-    }
-
-    function closeSettings() {
-        var panel = document.getElementById('wx-settings-panel');
-        var overlay = document.getElementById('wx-settings-overlay');
-        if (panel) panel.classList.remove('open');
-        if (overlay) overlay.classList.remove('open');
-    }
-
-    // 添加设置按钮到工具栏
-    function addSettingsButton() {
-        var toolbar = document.querySelector('.ci-left-tool, .ci-tool, .ci-right-tool');
-        if (!toolbar) return;
-        if (document.getElementById('wx-settings-btn')) return;
-
-        var btn = document.createElement('div');
-        btn.id = 'wx-settings-btn';
-        btn.innerHTML = '<svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M8 5.5a2.5 2.5 0 100 5 2.5 2.5 0 000-5z" stroke="currentColor" stroke-width="1.3"/><path d="M8 1.5v1.5M8 13v1.5M14.5 8H13M3 8H1.5M12.6 3.4l-1 1M4.4 11.6l-1 1M12.6 12.6l-1-1M4.4 4.4l-1-1" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/></svg>';
-        btn.title = '增强设置';
         btn.addEventListener('click', function(e) {
             e.stopPropagation();
-            openSettings();
+            var ta = document.querySelector('#chat-textarea');
+            if (!ta) return;
+            var s = ta.selectionStart, end = ta.selectionEnd;
+            ta.value = ta.value.substring(0, s) + '\n' + ta.value.substring(end);
+            ta.selectionStart = ta.selectionEnd = s + 1;
+            ta.dispatchEvent(new Event('input', { bubbles: true }));
+            ta.focus();
         });
         toolbar.appendChild(btn);
     }
 
     // ============================================================
-    //  PART 9: DOM 观察器 & 初始化
+    //  PART 5: 按钮过滤
     // ============================================================
-    var initDone = {
-        css: false,
-        theme: false,
-        input: false,
-        buttons: false,
-        settings: false,
-        model: false,
-        task: false
-    };
+    var HIDE_BTN_IDS = [
+        'inputPanel_deep_research',    // 深度思考 (与模型选择冲突)
+        'inputPanel_aippt',            // AI PPT
+        'inputPanel_zhinengchuangzuo', // AI写作
+        'inputPanel_aicode',           // AI编程
+        'inputPanel_aitranslate',      // AI翻译
+        'inputPanel_minglichuangzuo',  // 测运势
+        'inputPanel_music',            // AI音乐
+        'inputPanel_aiyuedu'           // AI阅读
+    ];
+    var HIDE_TEXT = [/ppt/i, /写作/i, /编程/i, /翻译/i, /深度思考/i, /深入研究/i, /测运势/i, /音乐/i, /阅读/i];
 
-    function tryInit() {
-        // 注入 CSS (只需一次)
-        if (!initDone.css) {
-            injectCSS();
-            initDone.css = true;
+    function filterButtons() {
+        // 隐藏 ci-panel 按钮
+        document.querySelectorAll('.ci-panel').forEach(function(p) {
+            var id = p.getAttribute('data-btn-id') || '';
+            var text = p.textContent || '';
+            var hide = false;
+            for (var i = 0; i < HIDE_BTN_IDS.length; i++) {
+                if (id.indexOf(HIDE_BTN_IDS[i]) >= 0) { hide = true; break; }
+            }
+            if (!hide) {
+                for (var j = 0; j < HIDE_TEXT.length; j++) {
+                    if (HIDE_TEXT[j].test(text)) { hide = true; break; }
+                }
+            }
+            p.style.display = hide ? 'none' : '';
+        });
+        // 隐藏APP下载提示
+        document.querySelectorAll('[class*="download-app"],[class*="need-app"],[class*="app-only"],[class*="app-required"]').forEach(function(el) {
+            el.style.display = 'none';
+        });
+    }
+
+    // ============================================================
+    //  PART 6: 模型默认 & 任务模式
+    // ============================================================
+    function setDefaultModel() {
+        var sel = document.querySelector('[data-testid="chat-mode-selector"], .ci-input-mode-button');
+        if (!sel || sel._wx2_model_set) return;
+        var current = sel.textContent || '';
+        // 已经是 DeepSeek 相关
+        if (/deepseek|ds.*v4|v4.*pro/i.test(current)) { sel._wx2_model_set = true; return; }
+
+        sel.click();
+        var attempts = 0;
+        function findOption() {
+            attempts++;
+            if (attempts > 15) return;
+            var opts = document.querySelectorAll('[class*="dropdown"] [class*="item"],[class*="menu"] [class*="item"],[role="option"],[class*="mode-option"],[class*="model-item"],[class*="dropdown"] div,[class*="popup"] div,[class*="menu-item"]');
+            var v4El = null;
+            for (var i = 0; i < opts.length; i++) {
+                var t = opts[i].textContent || '';
+                if (/deepseek.*v4.*pro|ds.*v4.*pro/i.test(t)) {
+                    opts[i].click();
+                    sel._wx2_model_set = true;
+                    toast('✅ 已切换: DeepSeek V4 Pro', 'success');
+                    return;
+                }
+                if (/deepseek.*v4|ds.*v4/i.test(t) && !v4El) v4El = opts[i];
+            }
+            if (v4El && attempts >= 8) {
+                v4El.click();
+                setTimeout(function() {
+                    var toggles = document.querySelectorAll('[class*="toggle"],[class*="switch"],[class*="think"],[class*="deep"]');
+                    for (var j = 0; j < toggles.length; j++) {
+                        if (/深度思考|思考模式|deep.*think|thinking/i.test(toggles[j].textContent || '')) {
+                            toggles[j].click(); break;
+                        }
+                    }
+                    sel._wx2_model_set = true;
+                    toast('✅ 已切换: DeepSeek V4 Pro + 思考', 'success');
+                }, 400);
+                return;
+            }
+            setTimeout(findOption, 300);
         }
+        setTimeout(findOption, 300);
+    }
 
-        // 应用主题
-        if (!initDone.theme) {
-            applyTheme();
-            initDone.theme = true;
-        }
-
-        // 等待关键元素出现
-        var textarea = document.querySelector('#chat-textarea');
-        var toolbar = document.querySelector('.ci-left-tool, .ci-tool, .ci-right-tool');
-
-        if (textarea && !initDone.input) {
-            fixInputBox();
-            initDone.input = true;
-        }
-
-        if (toolbar && !initDone.settings) {
-            addSettingsButton();
-            addNewlineButton();
-            initDone.settings = true;
-        }
-
-        // 按钮过滤
-        if (!initDone.buttons) {
-            filterButtons();
-            // 持续检查 (动态加载)
-            setTimeout(function() { filterButtons(); }, 1000);
-            setTimeout(function() { filterButtons(); }, 3000);
-            initDone.buttons = true;
-        }
-
-        // 模型默认设置
-        var selector = document.querySelector('[data-testid="chat-mode-selector"], .ci-input-mode-button');
-        if (selector && !initDone.model) {
-            setDefaultModel();
-            initDone.model = true;
-        }
-
-        // 任务模式
-        if (!initDone.task) {
-            enableTaskMode();
-            setTimeout(function() { enableTaskMode(); }, 2000);
-            initDone.task = true;
+    function enableTaskMode() {
+        var btns = document.querySelectorAll('.ci-panel,.ci-input-mode-button,[data-btn-id],[class*="task"]');
+        for (var i = 0; i < btns.length; i++) {
+            var b = btns[i];
+            if (/任务|task/i.test(b.textContent || '') || /task/i.test(b.getAttribute('data-btn-id') || '')) {
+                if (!b._wx2_task) {
+                    var active = /active|selected|on/i.test(b.className) || b.getAttribute('aria-selected') === 'true';
+                    if (!active) b.click();
+                    b._wx2_task = true;
+                    toast('✅ 任务模式已开启', 'success');
+                }
+                return;
+            }
         }
     }
 
-    // 使用 MutationObserver 监听 DOM 变化
-    var observer = new MutationObserver(debounce(function() {
-        tryInit();
-        // 持续应用按钮过滤 (页面可能动态重载按钮)
-        filterButtons();
-    }, 200));
+    // ============================================================
+    //  PART 7: 设置面板
+    // ============================================================
+    function createSettings() {
+        if (document.getElementById('wx2-settings-panel')) return;
 
-    // 启动
+        var ov = document.createElement('div');
+        ov.id = 'wx2-overlay';
+        ov.addEventListener('click', closeSettings);
+        document.body.appendChild(ov);
+
+        var p = document.createElement('div');
+        p.id = 'wx2-settings-panel';
+        p.innerHTML =
+            '<button class="wx2-close" id="wx2-close">✕</button>' +
+            '<h3>外观</h3>' +
+            '<div class="wx2-item"><div><div class="wx2-label">深色模式</div><div class="wx2-desc">跟随系统或手动切换</div></div>' +
+            '<select id="wx2-theme"><option value="auto">跟随系统</option><option value="light">浅色</option><option value="dark">深色</option></select></div>' +
+            '<h3>背景</h3>' +
+            '<div class="wx2-item" style="flex-direction:column;align-items:stretch;"><div class="wx2-label">图片 URL</div>' +
+            '<input type="url" id="wx2-bg-url" placeholder="https://..." style="margin-top:6px;">' +
+            '<button id="wx2-bg-set" style="margin-top:8px;align-self:flex-start;">设置</button></div>' +
+            '<div class="wx2-item" style="flex-direction:column;align-items:stretch;"><div class="wx2-label">上传图片</div>' +
+            '<input type="file" id="wx2-bg-file" accept="image/*" style="margin-top:6px;font-size:12px;color:#888;"></div>' +
+            '<div class="wx2-item"><div><div class="wx2-label">模糊度</div><div class="wx2-desc" id="wx2-blur-val">' + getBlur() + 'px</div></div>' +
+            '<input type="range" id="wx2-blur" min="0" max="30" value="' + getBlur() + '"></div>' +
+            '<div class="wx2-item"><div><div class="wx2-label">遮罩透明度</div><div class="wx2-desc" id="wx2-op-val">' + getOp() + '%</div></div>' +
+            '<input type="range" id="wx2-op" min="0" max="95" value="' + getOp() + '"></div>' +
+            '<div class="wx2-item"><button id="wx2-bg-clear" style="background:rgba(200,60,60,.85);">清除背景</button></div>' +
+            '<h3>功能</h3>' +
+            '<div class="wx2-item"><div><div class="wx2-label">防撤回 (智能回填)</div><div class="wx2-desc">拦截撤回消息并智能回填</div></div>' +
+            '<div class="wx2-toggle ' + (getAntiRecall() ? 'on' : '') + '" id="wx2-recall"></div></div>' +
+            '<div class="wx2-item" style="flex-direction:column;align-items:stretch;"><div class="wx2-label">回填状态</div>' +
+            '<div id="wx2-bf-status" style="font-size:12px;color:#888;margin-top:6px;">...</div></div>' +
+            '<h3>关于</h3>' +
+            '<div class="wx2-item" style="flex-direction:column;align-items:stretch;"><div class="wx2-label">文心助手增强 v2.0</div>' +
+            '<div class="wx2-desc" style="margin-top:4px;">手机适配 / 深色模式 / 背景 / 输入修复 / 按钮过滤 / 防撤回</div></div>';
+        document.body.appendChild(p);
+
+        document.getElementById('wx2-close').addEventListener('click', closeSettings);
+        var ts = document.getElementById('wx2-theme');
+        ts.value = getThemeMode();
+        ts.addEventListener('change', function() { setThemeMode(this.value); injectCSS(); });
+
+        var bu = document.getElementById('wx2-bg-url');
+        bu.value = getBg().indexOf('data:') === 0 ? '' : getBg();
+        document.getElementById('wx2-bg-set').addEventListener('click', function() {
+            var v = bu.value.trim();
+            if (v) { setBg(v); applyBackground(); toast('✅ 背景已设置', 'success'); }
+        });
+        document.getElementById('wx2-bg-file').addEventListener('change', function(e) {
+            var f = e.target.files[0]; if (!f) return;
+            var r = new FileReader();
+            r.onload = function(ev) { setBg(ev.target.result); applyBackground(); toast('✅ 已上传', 'success'); };
+            r.readAsDataURL(f);
+        });
+        var bl = document.getElementById('wx2-blur');
+        bl.addEventListener('input', function() { setBlur(parseInt(this.value)); applyBackground(); document.getElementById('wx2-blur-val').textContent = this.value + 'px'; });
+        var op = document.getElementById('wx2-op');
+        op.addEventListener('input', function() { setOp(parseInt(this.value)); applyBackground(); document.getElementById('wx2-op-val').textContent = this.value + '%'; });
+        document.getElementById('wx2-bg-clear').addEventListener('click', function() { delBg(); applyBackground(); bu.value = ''; toast('已清除'); });
+
+        var rt = document.getElementById('wx2-recall');
+        rt.addEventListener('click', function() {
+            var v = !getAntiRecall(); setAntiRecall(v);
+            this.classList.toggle('on', v);
+            toast(v ? '✅ 防撤回已开启' : '防撤回已关闭');
+        });
+        updateBfStatus();
+    }
+
+    function updateBfStatus() {
+        var el = document.getElementById('wx2-bf-status');
+        if (!el) return;
+        if (backfillQueue.length > 0) {
+            el.innerHTML = '⚠️ 有 <b style="color:#ff9500">' + backfillQueue.length + '</b> 轮撤回待回填';
+        } else {
+            el.innerHTML = '✅ 无待回填消息';
+        }
+    }
+
+    function openSettings() { createSettings(); updateBfStatus(); document.getElementById('wx2-settings-panel').classList.add('open'); document.getElementById('wx2-overlay').classList.add('open'); }
+    function closeSettings() { var p = document.getElementById('wx2-settings-panel'); var o = document.getElementById('wx2-overlay'); if(p) p.classList.remove('open'); if(o) o.classList.remove('open'); }
+
+    function addSettingsBtn() {
+        var tb = document.querySelector('#ci-left-tool, .ci-left-tool, .ci-left-tools-wrapper, #ci-right-tool, .ci-right-tool, .right-tools-wrapper');
+        if (!tb || document.getElementById('wx2-settings-btn')) return;
+        var btn = document.createElement('div');
+        btn.id = 'wx2-settings-btn';
+        btn.innerHTML = '⚙';
+        btn.title = '增强设置';
+        btn.addEventListener('click', function(e) { e.stopPropagation(); openSettings(); });
+        tb.appendChild(btn);
+    }
+
+    // ============================================================
+    //  PART 8: 初始化
+    // ============================================================
+    var done = {};
+    function tryInit() {
+        if (!done.css) { injectCSS(); applyBackground(); done.css = true; }
+        var ta = document.querySelector('#chat-textarea');
+        if (ta && !done.input) { fixInputBox(); done.input = true; }
+        var tb = document.querySelector('#ci-left-tool, .ci-left-tool, .ci-left-tools-wrapper, #ci-right-tool, .ci-right-tool');
+        if (tb && !done.btns) { addSettingsBtn(); addNewlineButton(); done.btns = true; }
+        if (!done.filter) { filterButtons(); done.filter = true; }
+        var sel = document.querySelector('[data-testid="chat-mode-selector"], .ci-input-mode-button');
+        if (sel && !done.model) { setDefaultModel(); done.model = true; }
+        if (!done.task) { enableTaskMode(); done.task = true; }
+    }
+
+    var mo = new MutationObserver(debounce(function() { tryInit(); filterButtons(); }, 200));
+
     function start() {
         tryInit();
-        if (document.body) {
-            observer.observe(document.body, { childList: true, subtree: true });
-        } else {
-            // body 尚未就绪, 等待
-            var bodyCheck = setInterval(function() {
-                if (document.body) {
-                    clearInterval(bodyCheck);
-                    tryInit();
-                    observer.observe(document.body, { childList: true, subtree: true });
-                }
+        if (document.body) mo.observe(document.body, { childList: true, subtree: true });
+        else {
+            var c = setInterval(function() {
+                if (document.body) { clearInterval(c); tryInit(); mo.observe(document.body, { childList: true, subtree: true }); }
             }, 50);
         }
     }
 
-    // 在 document-start 时立即执行可执行的部分
-    if (document.readyState === 'loading') {
-        document.addEventListener('DOMContentLoaded', start);
-    } else {
-        start();
+    if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', start);
+    else start();
+
+    if (window.matchMedia) {
+        var mq = window.matchMedia('(prefers-color-scheme: dark)');
+        var fn = function() { if (getThemeMode() === 'auto') injectCSS(); };
+        if (mq.addEventListener) mq.addEventListener('change', fn);
+        else if (mq.addListener) mq.addListener(fn);
     }
 
-    // 窗口大小变化时重新适配
-    window.addEventListener('resize', debounce(function() {
-        applyTheme();
-        filterButtons();
-    }, 300));
-
+    window.addEventListener('resize', debounce(function() { injectCSS(); filterButtons(); }, 300));
 })();
