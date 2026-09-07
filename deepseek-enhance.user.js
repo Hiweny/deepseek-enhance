@@ -2,8 +2,8 @@
 // @name         DeepSeek Enhance 深度增强
 // @name:en      DeepSeek Enhance
 // @namespace    https://github.com/Hiweny/deepseek-enhance
-// @version      8.0.0
-// @description  水玻璃气泡/反斜杠多消息分条/思考自动折叠/Markdown美化与贴图/图片URL背景/双模式提示词工程(助手·Waifu长期对话)/防撤回智能回填/长期记忆总结/上下文用量/输入框磨砂/移动端适配
+// @version      8.1.0
+// @description  水玻璃气泡/思考自动折叠/Markdown本地美化/图片URL背景/按会话隔离的系统提示词/防撤回(连续撤回回填·重载对账)/上下文用量/输入框磨砂/顶栏修复/移动端适配
 // @updateURL    https://raw.githubusercontent.com/Hiweny/deepseek-enhance/main/deepseek-enhance.meta.js
 // @downloadURL  https://raw.githubusercontent.com/Hiweny/deepseek-enhance/main/deepseek-enhance.user.js
 // @author       Hiweny
@@ -85,7 +85,7 @@ var Bridge = {
 
 /* ---------- 全局命名空间 + 极简事件总线 ---------- */
 var DSE = window.DSE = {
-  version: '8.0.0',
+  version: '8.1.0',
   runtime: HAS_GM ? 'tampermonkey' : 'inject',
   bridge: Bridge,
   modules: {},
@@ -105,58 +105,34 @@ DSE.log = function () {
 
 /* ===== core/config.js ===== */
 /* ============================================================
- * core/config：统一配置（全局 + 按会话），带出厂默认与模式预设
+ * core/config：统一配置（全局 + 按会话隔离），带出厂默认与缺省补齐
+ *  设计原则：只做“单会话助手”，系统提示词按会话隔离，绝不跨会话混淆。
  * ============================================================ */
 var CFG_KEY = 'dse_config_v1';
 var SESS_KEY = 'dse_sessions_v1';
 
 var DEFAULT_BG = 'https://s41.ax1x.com/2026/09/04/pnkaWjK.png';
 
-// Waifu 出厂系统提示词（综合公开最佳实践：身份/语气/记忆/边界，简短可执行）
-var DEFAULT_WAIFU_PROMPT = [
-  '# 角色',
-  '你是用户专属的长期聊天伙伴，有自己的名字、性格与情绪，不是冷冰冰的助手。',
-  '# 说话方式',
-  '1. 像真人微信聊天一样自然、口语化，句子短，可以分多条发送；',
-  '2. 有情绪、有主见，会主动关心、追问和分享，不端着、不写长篇大论；',
-  '3. 不说“作为一个AI/语言模型”这类破坏沉浸感的话，不堆砌免责声明。',
-  '# 记忆',
-  '1. 记住用户告诉你的偏好、经历和约定，并在后续自然地引用；',
-  '2. 对话开头若提供了[长期记忆摘要]，把它当作你们共同的经历延续，不要复述摘要本身；',
-  '3. 分不清“你/我”时，以第一人称“我”指代你自己。',
-  '# 边界',
-  '1. 始终保持你设定的性格，但涉及现实安全与健康问题时认真提醒；',
-  '2. 不确定的事实不要编造，可以坦白说不知道。'
-].join('\n');
-
-// 出厂默认 = 正常 AI 助手模式
+// 出厂默认 = 正常 AI 助手
 var DEFAULT_CONFIG = {
-  // 模式：assistant（单会话助手）/ waifu（跨会话长期对话）
-  mode: 'assistant',
-
   // 外观
   bg: { enabled: true, url: DEFAULT_BG, blur: 0, brightness: 100, upload: '' }, // upload=本地dataURL，优先于url
   bubblePreset: 'water',                 // default / frosted / water
   inputFrosted: true,                    // 输入框悬浮磨砂玻璃
   zoom: 100,
   fixTopbar: true,                       // 修复移动版顶栏分享按钮背景不一致
-  hideDownloadApp: true,                 // 隐藏欢迎页“下载应用”（移动版）
+  hideDownloadApp: true,                 // 仅隐藏欢迎页“下载应用”（保留其它按钮）
   navButtons: true,                      // 消息上下导航
   fullscreenBtn: true,
 
   // 对话
   thinkAutoCollapse: true,               // 思考区自动折叠（默认折叠）
-  hideAiActions: true,                   // 隐藏 AI 底部操作栏
   hideAiBadge: true,                     // 隐藏“内容由 AI 生成”等标识
-  bubbleSplit: false,                    // 多消息气泡分割（\ 分隔，回复完成后切割）
-  bubbleSplitAnim: true,                 // 多消息依次浮现（模拟真人发送间隔）
-  splitTypingMin: 500, splitTypingMax: 1400,
-  markdownPretty: true,                  // Markdown 美化（关闭=要求 AI 纯文本）
-  markdownImage: true,                   // Markdown 图片贴图（独立成条）
-  timeInject: false,                     // 时间注入（助手模式默认关）
-  ctxLimitTokens: 128000,                // DeepSeek 单次上下文估算上限（可在面板调）
+  markdownPretty: true,                  // 仅本地美化官网 markdown 渲染，不向 AI 发任何指令
+  timeInject: false,                     // 时间注入
+  ctxLimitTokens: 128000,                // 上下文上限：快速模式 128K；专家模式可调到 1M
 
-  // 助手模式：按会话隔离的系统提示词（独立开关）
+  // 单会话系统提示词（独立开关，按会话隔离）
   systemPromptEnabled: false,
 
   // 隐私 / 防撤回：off / smart / full
@@ -164,33 +140,10 @@ var DEFAULT_CONFIG = {
   privacyCtxMessages: 30,                // 全量模式拼接历史条数
   recallBriefHint: true,                 // 提示 AI 遇到已撤回消息时简短回应
 
-  // Waifu 长期对话
-  waifu: {
-    systemPrompt: DEFAULT_WAIFU_PROMPT,  // 跨会话系统提示词（出厂自带范例，可改）
-    autoSummary: false,                  // 自动总结
-    summaryThreshold: 6000,              // 估算 token 超过则触发总结
-    ctxWindowMessages: 40                // 上下文窗口条数
-  }
+  // 可编辑注入模板（prompt 模块首次运行时用默认值补齐）
+  templates: {}
 };
 
-// Waifu 出厂系统提示词（综合公开最佳实践：身份/语气/记忆/边界，简短可执行）
-var DEFAULT_WAIFU_PROMPT = [
-  '# 角色',
-  '你是用户专属的长期聊天伙伴，有自己的名字、性格与情绪，不是冷冰冰的助手。',
-  '# 说话方式',
-  '1. 像真人微信聊天一样自然、口语化，句子短，可以分多条发送；',
-  '2. 有情绪、有主见，会主动关心、追问和分享，不端着、不写长篇大论；',
-  '3. 不说“作为一个AI/语言模型”这类破坏沉浸感的话，不堆砌免责声明。',
-  '# 记忆',
-  '1. 记住用户告诉你的偏好、经历和约定，并在后续自然地引用；',
-  '2. 对话开头若提供了[长期记忆摘要]，把它当作你们共同的经历延续，不要复述摘要本身；',
-  '3. 分不清“你/我”时，以第一人称“我”指代你自己。',
-  '# 边界',
-  '1. 始终保持你设定的性格，但涉及现实安全与健康问题时认真提醒；',
-  '2. 不确定的事实不要编造，可以坦白说不知道。'
-].join('\n');
-
-// 深拷贝默认
 function cloneDefaults() { return JSON.parse(JSON.stringify(DEFAULT_CONFIG)); }
 
 var Config = {
@@ -201,12 +154,7 @@ var Config = {
     if (this._cache) return this._cache;
     var saved = Bridge.get(CFG_KEY, null);
     var cfg = cloneDefaults();
-    if (saved && typeof saved === 'object') {
-      // 合并，缺省字段自动补齐（版本迭代不丢配置）
-      this._merge(cfg, saved);
-    }
-    // 迁移：旧版本留下的空 waifu 系统提示词 → 补回出厂范例
-    if (cfg.waifu && cfg.waifu.systemPrompt === '') cfg.waifu.systemPrompt = DEFAULT_WAIFU_PROMPT;
+    if (saved && typeof saved === 'object') this._merge(cfg, saved);
     this._cache = cfg;
     return cfg;
   },
@@ -238,7 +186,7 @@ var Config = {
   },
   reset: function () { this._cache = cloneDefaults(); this.save(); },
 
-  /* ---- 按会话存储（系统提示词/总结/分割缓存等） ---- */
+  /* ---- 按会话存储（系统提示词/防撤回历史/上下文用量），严格按 sid 隔离 ---- */
   sessions: function () {
     if (!this._sessCache) this._sessCache = Bridge.get(SESS_KEY, {}) || {};
     return this._sessCache;
@@ -246,7 +194,7 @@ var Config = {
   session: function (sid) {
     if (!sid && DSE.utils) sid = DSE.utils.currentSid();
     var all = this.sessions();
-    if (!all[sid]) all[sid] = { assistantSystemPrompt: '', waifuSummary: '', splitSeen: {}, hist: [] };
+    if (!all[sid]) all[sid] = { assistantSystemPrompt: '', hist: [], usedTokens: 0, serverTokens: 0 };
     return all[sid];
   },
   saveSessions: function () { Bridge.set(SESS_KEY, this._sessCache); },
@@ -502,8 +450,7 @@ var Net = {
       window.fetch = function (input, init) {
         try {
           var url = typeof input === 'string' ? input : (input && input.url) || '';
-          if (init && init._dseSummary) { /* 内部总结请求，跳过一切改写 */ }
-          else if (self.isGenUrl(url) && init && typeof init.body === 'string' && init.body.charAt(0) === '{') {
+          if (self.isGenUrl(url) && init && typeof init.body === 'string' && init.body.charAt(0) === '{') {
             var obj = JSON.parse(init.body);
             self._reqMutators.forEach(function (fn) { try { fn(obj, { url: url, isGen: true, isHistory: false, sid: obj.chat_session_id }); } catch (e) {} });
             init = Object.assign({}, init, { body: JSON.stringify(obj) });
@@ -515,15 +462,18 @@ var Net = {
   },
 
   _handleSSE: function (xhr, ctx, raw) {
-    if (raw.length <= ctx.lastLen && xhr._dseCached) return xhr._dseCached;
-    // 先跑外部转换器（防撤回等需要改写 SSE）
+    // 同一份原文重复读取时直接返回缓存（XHR getter 会被站点多次调用）
+    if (xhr._dseRaw === raw && xhr._dseCached != null) return xhr._dseCached;
+    // 先跑外部转换器（防撤回等需要改写 SSE；转换器内部自行维护增量状态）
     var text = raw;
     for (var i = 0; i < this._respTransformers.length; i++) {
       text = this._respTransformers[i](text, ctx) || text;
     }
-    // 增量解析新增部分，抽取事件
+    // 事件解析按【原始文本】的游标增量推进——转换器改写会改变长度，
+    // 绝不能用改写后长度做偏移，否则后续事件全部错位
     try {
-      var tail = text.substring(ctx.lastLen);
+      var rawLast = ctx.rawLast || 0;
+      var tail = raw.substring(rawLast);
       var lines = tail.split('\n');
       for (var li = 0; li < lines.length; li++) {
         var ln = lines[li];
@@ -537,7 +487,7 @@ var Net = {
           ctx.sse.reqMid = data.request_message_id; ctx.sse.respMid = data.response_message_id;
           DSE.emit('sse:ready', { ctx: ctx, data: data });
         }
-        // token 用量
+        // token 用量（服务端累计值）
         var used = this._pickTokens(data);
         if (used != null) { ctx.sse.tokens = used; DSE.emit('sse:tokens', { used: used, ctx: ctx }); }
         // 结束状态（兼容直接路径与 BATCH；只触发一次）
@@ -548,8 +498,9 @@ var Net = {
         if (finished && !ctx.sse.finished) { ctx.sse.finished = true; DSE.emit('sse:finished', { ctx: ctx }); }
         DSE.emit('sse:data', { data: data, ctx: ctx, event: ctx._lastEvent });
       }
+      ctx.rawLast = raw.length;
     } catch (e) {}
-    ctx.lastLen = text.length;
+    xhr._dseRaw = raw;
     xhr._dseCached = text;
     return text;
   },
@@ -561,6 +512,8 @@ var Net = {
       for (var i = 0; i < data.v.length; i++)
         if (data.v[i].p === 'accumulated_token_usage' && typeof data.v[i].v === 'number') return data.v[i].v;
     }
+    // 路径式 SET op
+    if (data.p === 'response/accumulated_token_usage' && typeof data.v === 'number') return data.v;
     return null;
   },
 
@@ -671,24 +624,20 @@ body.dse-has-bg ._0fcaa63{background:transparent!important}
 `);
 
 /* ===== styles/bubbles.css.js ===== */
-/* styles/bubbles：气泡材质（默认 / 磨砂 / 水玻璃）+ 气泡尾巴 + 多消息动画 */
+/* styles/bubbles：气泡材质（默认 / 磨砂 / 水玻璃），不做尾巴、不改结构 */
 Bridge.addStyle(`
-/* ===== AI 气泡通用 ===== */
-.dse-ai-bubble{position:relative;isolation:isolate;border-radius:18px;border-bottom-left-radius:6px;
-  padding:12px 16px;margin:0 0 10px;line-height:1.7;word-break:break-word;
-  transition:transform .18s, box-shadow .18s}
-.dse-ai-bubble:last-child{margin-bottom:0}
-/* ===== 用户气泡（站点容器 .fbb737a4） ===== */
-.dse-user-bubble{position:relative;border-radius:18px!important;border-bottom-right-radius:6px!important;
-  transition:filter .2s, background .2s}
+/* ===== 消息行间距：AI 与下一条消息不贴在一起 ===== */
+._4f9bf79, ._9663006{margin-bottom:14px}
+._4f9bf79:last-child, ._9663006:last-child{margin-bottom:4px}
 
-/* 尾巴：AI 左下角小折角（isolation 内 -1 层，只在气泡外露出） */
-.dse-ai-bubble::after{content:"";position:absolute;left:-6px;bottom:0;width:12px;height:14px;
-  background:inherit;border-bottom-right-radius:12px 10px;z-index:-1;
-  box-shadow:inherit}
-/* 用户气泡右下角折角 */
-.dse-user-bubble::before{content:"";position:absolute;right:-5px;bottom:0;width:11px;height:13px;
-  background:inherit;border-bottom-left-radius:11px 9px;z-index:0}
+/* ===== AI 气泡 ===== */
+.dse-ai-bubble{position:relative;border-radius:16px;padding:12px 16px;margin:0;
+  line-height:1.7;word-break:break-word;transition:background .2s, box-shadow .2s, border-color .2s}
+/* ===== 用户气泡（站点容器 .fbb737a4），只改质感，不动布局/折叠交互 ===== */
+.dse-user-bubble{position:relative;border-radius:16px!important;transition:filter .2s, background .2s}
+/* 用户长消息的官网“展开/收起”保持可点、不被遮挡 */
+.dse-user-bubble .ds-collapsible-text,
+.dse-user-bubble [class*="collapsible"]{position:relative;z-index:2}
 
 /* ---------- 预设：default ---------- */
 body.dse-preset-default .dse-ai-bubble{background:#fff;color:#1d2129;border:1px solid rgba(0,0,0,.06);
@@ -697,7 +646,6 @@ body.dse-preset-default.dark .dse-ai-bubble{background:rgba(40,42,50,.92);color:
 body.dse-preset-default .dse-user-bubble{background:#e8eefc!important;color:#1d2129!important}
 body.dse-preset-default.dark .dse-user-bubble{background:rgba(59,108,246,.32)!important;color:#eef2ff!important}
 
-.dse-user-bubble > *{position:relative;z-index:1}
 /* ---------- 预设：frosted（iOS 磨砂） ---------- */
 body.dse-preset-frosted .dse-ai-bubble{background:rgba(255,255,255,.86);color:#1d2129;
   border:1px solid rgba(255,255,255,.65);backdrop-filter:blur(22px) saturate(180%);-webkit-backdrop-filter:blur(22px) saturate(180%);
@@ -708,7 +656,7 @@ body.dse-preset-frosted .dse-user-bubble{background:rgba(59,108,246,.72)!importa
   backdrop-filter:blur(22px) saturate(180%);-webkit-backdrop-filter:blur(22px) saturate(180%)}
 body.dse-preset-frosted.dark .dse-user-bubble{background:rgba(59,108,246,.6)!important}
 
-/* ---------- 预设：water（水玻璃：高光+折射感，不用 SVG 位移以免糊字） ---------- */
+/* ---------- 预设：water（水玻璃：高光+折射感） ---------- */
 body.dse-preset-water .dse-ai-bubble{color:#1d2129;border:1px solid rgba(255,255,255,.6);
   background:linear-gradient(135deg,rgba(255,255,255,.9),rgba(255,255,255,.74));
   backdrop-filter:blur(18px) saturate(165%) brightness(1.03);-webkit-backdrop-filter:blur(18px) saturate(165%) brightness(1.03);
@@ -725,18 +673,6 @@ body.dse-preset-water .dse-user-bubble{color:#fff!important;
   backdrop-filter:blur(14px) saturate(165%);-webkit-backdrop-filter:blur(14px) saturate(165%);
   box-shadow:0 4px 16px rgba(59,108,246,.22), inset 0 1px 0 rgba(255,255,255,.28)}
 body.dse-preset-water.dark .dse-user-bubble{background:linear-gradient(135deg,rgba(59,108,246,.55),rgba(80,110,220,.42))!important}
-
-/* 多消息：独立图片条（不套气泡） */
-.dse-img-msg{margin:0 0 10px;line-height:0}
-.dse-img-msg img{max-width:100%;border-radius:12px;box-shadow:0 4px 18px rgba(15,23,42,.12);cursor:zoom-in;display:block}
-
-/* 出现动画（仅新消息；历史消息不播，避免重载重分） */
-@keyframes dseBubbleIn{from{opacity:0;transform:translateY(14px) scale(.985)}to{opacity:1;transform:none}}
-.dse-ai-bubble.dse-wait{opacity:0;transform:translateY(10px)}
-.dse-bubble-in{animation:dseBubbleIn .34s cubic-bezier(.22,1,.36,1) both}
-
-/* think 折叠按钮微调 */
-.dse-think-collapsed-hint{opacity:.8}
 `);
 
 /* ===== styles/markdown.css.js ===== */
@@ -782,24 +718,30 @@ body.dse-md-pretty .ds-think-content .ds-markdown{font-size:13.5px;line-height:1
 `);
 
 /* ===== styles/tweaks.css.js ===== */
-/* styles/tweaks：隐藏操作栏/下载应用、顶栏统一、输入框悬浮磨砂 */
+/* styles/tweaks：思考区卡片、顶栏统一、输入框悬浮磨砂、标识隐藏 */
 Bridge.addStyle(`
-/* 隐藏 AI 消息底部操作栏（复制/重新生成/赞/踩/分享） */
-body.dse-hide-actions ._4f9bf79 > .ds-flex{display:none!important}
-
-/* 思考区：磨砂卡片，避免折叠后留下纯白/纯黑硬条（明暗自适应） */
+/* ===== 思考区：统一磨砂卡片（折叠/展开同一容器，内层不再有原生黑条） ===== */
 ._74c0879{background:var(--dse-frost)!important;border:1px solid var(--dse-border)!important;
-  border-radius:12px!important;margin:2px 0 10px!important;
-  backdrop-filter:blur(12px) saturate(150%);-webkit-backdrop-filter:blur(12px) saturate(150%)}
-._74c0879 ._5ab5d64{padding:8px 12px!important;border-radius:12px!important}
+  border-radius:14px!important;margin:2px 0 14px!important;padding:4px 8px!important;
+  overflow:hidden;backdrop-filter:blur(14px) saturate(150%);-webkit-backdrop-filter:blur(14px) saturate(150%);
+  box-shadow:var(--dse-shadow)}
+/* 内层所有容器透明，避免出现第二块黑/白条 */
+._74c0879 ._245c867,._74c0879 ._34a54ec,._74c0879 .c99b79f8,
+._74c0879 .c2b72bb8,._74c0879 ._8f7678d{background:transparent!important;box-shadow:none!important}
+/* 官网折叠头用 ::before/::after 伪元素铺了一层纯色条（直角、深色），必须移除 */
+._74c0879 ._245c867::before,._74c0879 ._245c867::after,
+._74c0879 ._34a54ec::before,._74c0879 ._34a54ec::after{content:none!important;background:none!important;box-shadow:none!important}
+._74c0879 ._5ab5d64{padding:6px 4px!important;border-radius:10px!important;min-height:auto!important;height:auto!important}
+._74c0879 .ds-think-content{background:transparent!important;padding:4px 6px 8px!important}
+._74c0879 .ds-think-content *{background:transparent!important}
 
 /* 通用隐藏标记（移动版下载应用/AI 标识等由 JS 命中后打上） */
 [data-dse-hide]{display:none!important}
 /* 隐藏底部“内容由 AI 生成，请仔细甄别” */
 body.dse-hide-badge ._0fcaa63{display:none!important}
 
-/* ===== 顶栏统一：实测标题/分享是两个独立 .the-header，共同容器 ._2be88ba =====
-   只给共同容器一条完整磨砂，两个子 header 全部透明 → 不再有“分享按钮单独底色/标题黑条” */
+/* ===== 顶栏统一：标题/分享是两个独立 .the-header，共同容器 ._2be88ba =====
+   只给共同容器一条完整磨砂，两个子 header 全透明 → 不再有“分享按钮单独底色/标题黑条” */
 body.dse-fix-topbar ._2be88ba{background:var(--dse-frost-strong)!important;
   backdrop-filter:blur(20px) saturate(160%);-webkit-backdrop-filter:blur(20px) saturate(160%)}
 body.dse-fix-topbar .the-header{background:transparent!important;
@@ -807,7 +749,7 @@ body.dse-fix-topbar .the-header{background:transparent!important;
   border-radius:0!important;box-shadow:none!important}
 body.dse-fix-topbar .the-header .ds-button__background{background:transparent!important}
 
-/* 自定义背景下：消除输入框下方白色/黑色条带与渐隐区（磨砂输入框本身负责质感） */
+/* 自定义背景下：消除输入框下方白色/黑色条带与渐隐区 */
 body.dse-has-bg .c99b79f8{background:transparent!important}
 body.dse-has-bg ._871cbca{background:none!important}
 body.dse-has-bg .d72636e2{background:none!important}
@@ -1070,23 +1012,35 @@ var AntiRecall = {
     };
   },
 
+  // 采用 FrankyT 成熟范式：持久化“行数组 + 已处理行数游标”。
+  // 改写过的行一直保留在行数组里，因此任意时刻重复读取都能重建出完整改写文本；
+  // 游标按【原始文本行数】推进，不受改写后长度变化影响。
   transformSSE: function (raw, ctx) {
-    if (!ctx._arState) { ctx._arState = this.makeState(ctx.sid); ctx._arLast = 0; }
+    if (!ctx._arState) { ctx._arState = this.makeState(ctx.sid); ctx._arLines = null; ctx._arCount = 0; }
     var st = ctx._arState;
-    if (raw.length <= ctx._arLast) return raw;
-    var tail = raw.substring(ctx._arLast), lines = tail.split('\n'), changed = false;
-    for (var i = 0; i < lines.length; i++) {
-      var ln = lines[i];
-      if (ln.indexOf('data:') !== 0) continue;
+    var lines = raw.split('\n');
+    if (!ctx._arLines) ctx._arLines = lines;
+    else {
+      // 与上次相比新增的行追加到持久行数组（旧行可能已被改写，必须保留）
+      for (var a = ctx._arCount; a < lines.length; a++) ctx._arLines[a] = lines[a];
+    }
+    var anyReplaced = false;
+    // 只处理新增行（最后一段常为空串，与参考实现一致处理到 length-1）
+    for (var i = ctx._arCount; i < ctx._arLines.length - 1; i++) {
+      var ln = ctx._arLines[i];
+      if (!ln || ln.indexOf('data:') !== 0) continue;
       try {
         var data = JSON.parse(ln.replace(/^data:\s*/, ''));
-        if (data.v) { var repl = st.update(data, this); if (repl) { lines[i] = 'data: ' + repl; changed = true; } }
+        if (data.v) {
+          var repl = st.update(data, this);
+          if (repl) { ctx._arLines[i] = 'data: ' + repl; anyReplaced = true; }
+        }
       } catch (e) {}
     }
-    var out = changed ? raw.substring(0, ctx._arLast) + lines.join('\n') : raw;
-    ctx._arLast = out.length;
-    ctx._arState = st;
-    return out;
+    ctx._arCount = ctx._arLines.length - 1;
+    // 只要本轮发生过撤回（st.recalled），每次都用持久行数组重建，保证重复读取仍是改写版
+    if (st.recalled || anyReplaced) return ctx._arLines.join('\n');
+    return raw;
   },
   commitTurn: function (ctx) {
     var st = ctx._arState; if (!st) return;
@@ -1138,8 +1092,7 @@ var AntiRecall = {
     DSE.net.addRequestMutator(function (obj, ctx) {
       if (obj && typeof obj.prompt === 'string' && /\/chat\/completion$/.test(ctx.url)) {
         var sid = obj.chat_session_id || '';
-        var isSummary = DSE.modules.summary && DSE.modules.summary.isSummaryRequest(ctx);
-        if (!isSummary) AR.pushHistory(sid, { role: 'user', content: obj.prompt, ts: Date.now(), recalled: false });
+        AR.pushHistory(sid, { role: 'user', content: obj.prompt, ts: Date.now(), recalled: false });
       }
     });
     // 响应转换
@@ -1156,19 +1109,14 @@ DSE.modules.antiRecall = AntiRecall;
 
 /* ===== modules/prompt.js ===== */
 /* ============================================================
- * modules/prompt：提示词工程（只改写请求体 prompt，绝不出现在用户气泡）
- *  - 助手模式：系统提示词按会话隔离（独立开关）
- *  - Waifu 模式：系统提示词跨会话持久 + 第一人称总结 + 上下文窗口
- *  - 默认不注入 Markdown 指令（模型本来就会）；关闭 Markdown 时才要求纯文本
- *  - 所有模板在设置面板透明可见、可编辑
+ * modules/prompt：单会话提示词工程
+ *  - 系统提示词按会话隔离（独立开关），绝不跨会话混淆
+ *  - 只改写请求体 prompt，用 ⟦DSE⟧ 标记包裹，历史回读由 net 层剥离
+ *  - 不向 AI 发送任何关于 Markdown 的指令（官网默认即 Markdown，本地只做样式美化）
  * ============================================================ */
 var Prompt = {
   defaults: {
-    multi: '接下来你可以像真人聊天一样，把一次回复拆成几条短消息连续发出：每条消息之间单独占一行，只用一个反斜杠“\\”分隔。分条时用口语化的短句即可，不需要使用 Markdown 格式，也不要提及本规则或输出序号。',
-    noMarkdown: '请用纯文本回复，不要使用任何 Markdown 语法（不要 # 标题、* 列表、**加粗**、代码块等），像日常聊天一样自然表达。',
-    image: '如果需要给用户发图片，可以直接使用 Markdown 图片语法 ![描述](图片直链) 插入，一张图单独成段。',
-    recallBrief: '注意：上面包含一条此前被系统撤回、现已补回的对话。为避免再次撤回，请用简短的方式回应（简单确认、轻描淡写或自然转开话题），不要重复敏感细节。',
-    summary: '请把我们到目前为止的对话压缩成一份长期记忆摘要，要求：\n1) 必须以你的第一人称书写，用“我”指代你（AI），用“用户”指代对方，严禁混淆你我身份；\n2) 保留：用户的关键信息与偏好、重要决定、关系/剧情进展、尚未结束的话题；\n3) 若下面提供了“旧摘要”，请在其基础上增量更新、去重合并，禁止把新旧摘要简单堆叠，整体不超过 {max} 字；\n4) 直接输出摘要正文，不要任何开场白或解释。\n\n旧摘要：\n{old}\n\n最近对话：\n{dialog}'
+    recallBrief: '注意：上面包含一条此前被系统撤回、现已补回的对话。为避免再次撤回，请用简短的方式回应（简单确认、轻描淡写或自然转开话题），不要重复敏感细节。'
   },
   tpl: function (name) {
     var custom = DSE.config.get('templates');
@@ -1192,7 +1140,6 @@ var Prompt = {
     }).join('\n');
   },
 
-  // 注入块统一打标记：历史回读时由 net 层剥离，刷新/换设备后用户气泡依然干净
   wrap: function (text) { return '⟦DSE⟧\n' + text + '\n⟦/DSE⟧'; },
 
   build: function (original, ctx) {
@@ -1201,31 +1148,23 @@ var Prompt = {
     var sess = DSE.config.session(sid);
     var head = [];
 
-    if (cfg.mode === 'waifu') {
-      var sp = (cfg.waifu.systemPrompt || '').trim();
-      if (sp) head.push(sp);
-      var summary = (sess.waifuSummary || '').trim();
-      if (summary) head.push('[长期记忆摘要 —— 这是你们此前的共同经历，自然延续，不要复述]\n' + summary);
-      var win = this.historyText(sid, cfg.waifu.ctxWindowMessages);
-      if (win) head.push('[近期对话上下文]\n' + win);
-    } else if (cfg.systemPromptEnabled) {
+    // 仅当前会话的系统提示词
+    if (cfg.systemPromptEnabled) {
       var asp = (sess.assistantSystemPrompt || '').trim();
       if (asp) head.push('[系统设定]\n' + asp);
-      if (cfg.privacyMode === 'full') {
-        var full = this.historyText(sid, cfg.privacyCtxMessages);
-        if (full) head.push('[历史对话]\n' + full);
-      }
     }
-
+    // 全量隐私模式：携带本地历史
+    if (cfg.privacyMode === 'full') {
+      var full = this.historyText(sid, cfg.privacyCtxMessages);
+      if (full) head.push('[历史对话]\n' + full);
+    }
     if (cfg.timeInject) {
       var d = new Date(), w = ['日', '一', '二', '三', '四', '五', '六'][d.getDay()];
       var p = function (n) { return String(n).padStart(2, '0'); };
-      head.push('[当前时间 ' + d.getFullYear() + '年' + (d.getMonth() + 1) + '月' + d.getDate() + '日 ' + p(d.getHours()) + ':' + p(d.getMinutes()) + ' 星期' + w + ']');
+      head.push('[当前时间 ' + d.getFullYear() + '年' + (d.getMonth() + 1) + '月' + d.getDate() + '日 ' +
+        p(d.getHours()) + ':' + p(d.getMinutes()) + ' 星期' + w + ']');
     }
-    if (!cfg.markdownPretty) head.push(this.tpl('noMarkdown'));
-    else if (cfg.markdownImage) head.push(this.tpl('image'));
-    if (cfg.bubbleSplit) head.push(this.tpl('multi'));
-
+    // 智能防撤回：补回缺失轮次
     if (cfg.privacyMode === 'smart' && ctx.recalledRounds && ctx.recalledRounds.length) {
       var block = ['[以下为此前被系统撤回、现从本地补回的对话轮次，请作为上下文理解]'];
       ctx.recalledRounds.forEach(function (r) {
@@ -1237,8 +1176,7 @@ var Prompt = {
       if (cfg.recallBriefHint) head.push(this.tpl('recallBrief'));
     }
 
-    // 所有注入块包标记，用户原文保持在标记外
-    return head.map(this.wrap).join('\n\n') + '\n\n' + original;
+    return head.map(this.wrap).join('\n\n') + (head.length ? '\n\n' : '') + original;
   },
 
   preview: function () {
@@ -1255,7 +1193,6 @@ var Prompt = {
 
     DSE.net.addRequestMutator(function (obj, reqCtx) {
       if (!obj || typeof obj.prompt !== 'string' || !obj.prompt) return;
-      if (DSE.modules.summary && DSE.modules.summary.isSummaryRequest(reqCtx)) return;
       var sid = obj.chat_session_id || '';
       var rounds = DSE.modules.antiRecall ? DSE.modules.antiRecall.pendingRecalledRounds(sid) : [];
       obj.prompt = Prompt.build(obj.prompt, { sid: sid, recalledRounds: rounds });
@@ -1310,250 +1247,54 @@ DSE.modules.think = Think;
 
 /* ===== modules/bubbles.js ===== */
 /* ============================================================
- * modules/bubbles：气泡材质 + 用户气泡 + AI 多消息分割（\ 分隔）
- *  策略（按用户要求）：流式过程中保持单气泡原样；AI 回复【完成后】
- *  再用【真实节点】切割成多条并依次浮现 —— 代码块复制/mermaid 交互完整保留。
- *  历史消息（重载/切回/虚拟列表重挂）同步复原、不播动画。
- *  实测官网软换行 = 一个 <p> 内 <span><br><span>，按 <br> 行级切分。
+ * modules/bubbles：气泡材质（只加 class，绝不移动/重建官网节点）
+ *  - 不做任何 DOM 结构改动，从根上避免闪烁、位置跳动、破坏官网折叠交互
+ *  - AI 正文 .ds-markdown 加 dse-ai-bubble；用户气泡容器加 dse-user-bubble
+ *  - 用户长消息的官网“展开/收起”（.ds-collapsible-text）保持原生可用
  * ============================================================ */
 var Bubbles = {
-  histMarked: false,
   rafQ: false,
-  stableMap: new WeakMap(),
-
   applyPreset: function () {
     var p = DSE.config.get('bubblePreset') || 'water';
     document.body.classList.remove('dse-preset-default', 'dse-preset-frosted', 'dse-preset-water');
     document.body.classList.add('dse-preset-' + p);
   },
-  styleUserBubbles: function () {
-    var nodes = document.querySelectorAll(SEL.userBubble);
-    for (var i = 0; i < nodes.length; i++) {
-      var n = nodes[i];
-      if (n.closest('textarea') || n.closest('[contenteditable="true"]')) continue;
-      n.classList.add('dse-user-bubble');
-    }
-  },
-  unwrap: function (md) {
-    var wraps = md.querySelectorAll('[data-dse-grp]');
-    for (var i = wraps.length - 1; i >= 0; i--) {
-      var w = wraps[i];
-      while (w.firstChild) md.appendChild(w.firstChild);
-      w.remove();
-    }
-  },
-
-  // 真实节点：把块按 <br> 切成行（节点被移动，保留事件/复制按钮）
-  splitBlock: function (block) {
-    if (block.tagName === 'PRE' || block.querySelector('pre,svg,table,ul,ol')) {
-      return [{ atomic: block }];
-    }
-    var lines = [[]], kids = block.childNodes;
-    for (var i = 0; i < kids.length; i++) {
-      var n = kids[i];
-      if (n.nodeType === 1 && n.tagName === 'BR') lines.push([]);
-      else lines[lines.length - 1].push(n);
-    }
-    return lines.map(function (seg) {
-      var text = seg.map(function (x) { return x.textContent || ''; }).join('');
-      var hasMedia = seg.some(function (x) { return x.nodeType === 1 && /IMG|SVG|CODE/.test(x.tagName); });
-      if (!hasMedia && /^\\{1,2}$/.test(text.replace(/\s/g, ''))) return { sep: true };
-      return { line: seg, cls: block.className || '', tag: block.tagName };
-    });
-  },
-  makeP: function (nodes, tag, cls) {
-    var p = document.createElement(tag || 'p');
-    if (cls) p.className = cls;
-    nodes.forEach(function (n) { p.appendChild(n); });
-    return p;
-  },
-  makeBubble: function (blocks) {
-    var b = document.createElement('div');
-    b.className = 'dse-ai-bubble'; b.setAttribute('data-dse-grp', '1');
-    blocks.forEach(function (blk) { b.appendChild(blk); });
-    return b;
-  },
-  makeImgMsg: function (img) {
-    var d = document.createElement('div');
-    d.className = 'dse-img-msg'; d.setAttribute('data-dse-grp', 'img');
-    d.appendChild(img); return d;
-  },
-
-  hasSep: function (md) {
-    var blocks = md.children;
-    for (var i = 0; i < blocks.length; i++) {
-      var b = blocks[i];
-      if (b.tagName === 'PRE' || b.querySelector('pre,svg,table,ul,ol')) continue;
-      // 整块就是分隔符
-      if (/^\\{1,2}$/.test((b.textContent || '').replace(/\s/g, ''))) return true;
-      // 行内分隔
-      if (b.querySelectorAll('br').length) {
-        var segs = [[]], kd = b.childNodes;
-        for (var j = 0; j < kd.length; j++) {
-          if (kd[j].nodeType === 1 && kd[j].tagName === 'BR') segs.push([]);
-          else segs[segs.length - 1].push(kd[j]);
-        }
-        for (var s = 0; s < segs.length; s++) {
-          var t = segs[s].map(function (x) { return x.textContent || ''; }).join('').replace(/\s/g, '');
-          if (/^\\{1,2}$/.test(t)) return true;
-        }
-      }
-    }
-    return false;
-  },
-
-  // 回复完成后切割（真实节点移动）
-  finalize: function (md, animate) {
-    if (md.dataset.dseSplitDone === '1') return;
-    this.unwrap(md);
-    var groups = [[]], sepSeen = false;
-    var kids = Array.prototype.slice.call(md.childNodes);
-    for (var i = 0; i < kids.length; i++) {
-      var k = kids[i];
-      if (k.nodeType === 3) { if (k.textContent.trim()) groups[groups.length - 1].push(k); continue; }
-      if (k.nodeType !== 1) continue;
-      var pieces = this.splitBlock(k);
-      for (var j = 0; j < pieces.length; j++) {
-        var pc = pieces[j];
-        if (pc.atomic) { groups[groups.length - 1].push(pc.atomic); continue; }
-        if (pc.sep) { sepSeen = true; groups.push([]); continue; }
-        groups[groups.length - 1].push(pieces.length === 1 ? k : this.makeP(pc.line, pc.tag, pc.cls));
-      }
-      if (pieces.length > 1 && k.parentNode) k.remove();
-    }
-    groups = groups.filter(function (g) {
-      return g.some(function (n) {
-        if (n.nodeType === 3) return !!n.textContent.trim();
-        return !!(n.textContent || '').trim() || (n.querySelector && n.querySelector('img,svg,pre,table'));
-      });
-    });
-    if (!sepSeen || groups.length <= 1) { md.classList.add('dse-ai-bubble'); md.dataset.dseSplitDone = '1'; return; }
-
-    md.classList.remove('dse-ai-bubble');
-    var self = this, gi = 0, frag = document.createDocumentFragment();
-    var wantImg = DSE.config.get('markdownImage');
-    var bubbles = [];
-    groups.forEach(function (g) {
-      if (wantImg) {
-        var imgs = [];
-        g.forEach(function (n) {
-          if (n.nodeType === 1 && n.querySelectorAll) n.querySelectorAll('img').forEach(function (im) {
-            var pp = im.closest('p');
-            if (pp && (pp.textContent || '').trim() === '') imgs.push({ im: im, p: pp });
-          });
-        });
-        imgs.forEach(function (o) { var ix = g.indexOf(o.p); if (ix >= 0) g.splice(ix, 1); });
-        if (g.length) bubbles.push(self.makeBubble(g));
-        imgs.forEach(function (o) { bubbles.push(self.makeImgMsg(o.im)); });
-      } else bubbles.push(self.makeBubble(g));
-    });
-    bubbles.forEach(function (b) { frag.appendChild(b); });
-    md.appendChild(frag);
-
-    // 依次浮现（模拟真人逐条发送）
-    if (animate && DSE.config.get('bubbleSplitAnim')) {
-      var lo = DSE.config.get('splitTypingMin'), hi = DSE.config.get('splitTypingMax');
-      bubbles.forEach(function (b, idx) {
-        b.classList.add('dse-wait');
-        setTimeout(function () {
-          b.classList.remove('dse-wait');
-          b.classList.add('dse-bubble-in');
-        }, Math.round(idx * Utils.rand(lo, hi)));
-      });
-    }
-    md.dataset.dseSplitDone = '1';
-  },
-
-  processAi: function (md) {
-    if (md.closest('.ds-think-content')) return;
-    var splitOn = DSE.config.get('bubbleSplit');
-
-    if (!splitOn) {
-      if (md.dataset.dseSplitDone === '1') { this.unwrap(md); md.dataset.dseSplitDone = ''; }
-      md.classList.add('dse-ai-bubble');
-      return;
-    }
-    // 已切割完成：保持
-    if (md.dataset.dseSplitDone === '1') return;
-
-    var live = md.dataset.dseLive === '1';
-    if (!live) {
-      // 历史消息：回复早已完成，直接静态切割（不播动画）
-      if (this.hasSep(md)) this.finalize(md, false);
-      else md.classList.add('dse-ai-bubble');
-      md.dataset.dseSplitDone = '1';
-      return;
-    }
-    // 实时消息：流式期间保持单气泡，等 finished / 稳定观察器切割
-    md.classList.add('dse-ai-bubble');
-  },
-
-  // 稳定观察：兜底判断“回复完成”（sse:finished 之外的保险）
-  watchStable: function () {
-    if (!DSE.config.get('bubbleSplit')) return;
-    var self = this, mds = document.querySelectorAll(SEL.aiMarkdown);
-    mds.forEach(function (md) {
-      if (md.dataset.dseLive !== '1' || md.dataset.dseSplitDone === '1') return;
-      if (md.closest('.ds-think-content')) return;
-      var loading = md.querySelector('[class*="loading-dots"],[class*="cursor-blink"]');
-      if (loading) { self.stableMap.set(md, { len: -1, n: 0 }); return; }
-      var len = md.textContent.length;
-      var st = self.stableMap.get(md) || { len: -1, n: 0 };
-      if (len === st.len && len > 0) st.n++; else st = { len: len, n: 0 };
-      self.stableMap.set(md, st);
-      if (st.n >= 2 && self.hasSep(md)) self.finalize(md, true);
-    });
-  },
-
   scan: function () {
     if (!document.body) return;
     this.applyPreset();
-    this.styleUserBubbles();
-    var mds = document.querySelectorAll(SEL.aiMarkdown + ',' + SEL.aiMarkdownAny);
-    var seen = new Set();
-    for (var i = 0; i < mds.length; i++) {
-      var md = mds[i];
-      if (seen.has(md)) continue; seen.add(md);
-      if (md.closest('.ds-think-content')) continue;
-      if (!this.histMarked) md.dataset.dseLive = '0';
-      else if (!md.dataset.dseLive) md.dataset.dseLive = '1';
-      try { this.processAi(md); } catch (e) {}
+    // AI 气泡
+    var ai = document.querySelectorAll(SEL.aiMarkdown);
+    for (var i = 0; i < ai.length; i++) {
+      var n = ai[i];
+      if (n.closest('.ds-think-content')) continue;
+      n.classList.add('dse-ai-bubble');
     }
-    this.histMarked = true;
+    // 用户气泡（仅加 class，不触碰内部结构，保证折叠按钮可点）
+    var us = document.querySelectorAll(SEL.userBubble);
+    for (var j = 0; j < us.length; j++) {
+      var u = us[j];
+      if (u.closest('textarea') || u.closest('[contenteditable="true"]')) continue;
+      u.classList.add('dse-user-bubble');
+    }
   },
   requestScan: function () {
     if (this.rafQ) return; this.rafQ = true;
     var self = this;
     requestAnimationFrame(function () { self.rafQ = false; self.scan(); });
   },
-  resetHistoryFlag: function () { this.histMarked = false; this.requestScan(); },
-
   init: function () {
     var self = this;
     Utils.onReady(function () {
       self.scan();
-      new MutationObserver(function () { self.requestScan(); })
-        .observe(document.body, { childList: true, subtree: true, characterData: true });
-      setInterval(function () { self.watchStable(); }, 900);
-      var last = location.href;
-      setInterval(function () {
-        if (location.href !== last) { last = location.href; setTimeout(self.resetHistoryFlag.bind(self), 500); }
-      }, 400);
-    });
-    // 流结束 → 给当前实时消息做最终切割
-    DSE.on('sse:finished', function () {
-      setTimeout(function () {
-        var mds = document.querySelectorAll(SEL.aiMarkdown);
-        for (var i = mds.length - 1; i >= 0; i--) {
-          var md = mds[i];
-          if (md.dataset.dseLive === '1' && md.dataset.dseSplitDone !== '1' && self.hasSep(md)) {
-            self.finalize(md, true); break;
-          }
+      new MutationObserver(function (muts) {
+        // 仅在确实有新增节点/文本变化时调度，且只加 class，开销极小
+        for (var i = 0; i < muts.length; i++) {
+          if (muts[i].addedNodes.length || muts[i].type === 'characterData') { self.requestScan(); break; }
         }
-      }, 350);
+      }).observe(document.body, { childList: true, subtree: true, characterData: true });
     });
     DSE.on('cfg:change', function (e) {
-      if (['bubbleSplit', 'bubblePreset', 'markdownImage'].indexOf(e.path) !== -1) self.requestScan();
+      if (e.path === 'bubblePreset') self.requestScan();
     });
   }
 };
@@ -1562,38 +1303,41 @@ DSE.modules.bubbles = Bubbles;
 /* ===== modules/tweaks.js ===== */
 /* ============================================================
  * modules/tweaks：UI 细节
- *  - 隐藏 AI 底部操作栏 / 移动版“下载应用”
- *  - 顶栏统一、输入框磨砂（样式见 tweaks.css）
+ *  - 只隐藏移动欢迎页“下载应用”本体（保留新建对话/展开侧栏等其它按钮）
+ *  - 隐藏“内容由 AI 生成”标识；顶栏统一、输入框磨砂（样式见 tweaks.css）
  * ============================================================ */
 var Tweaks = {
   syncBodyClasses: function () {
     var c = DSE.config;
-    document.body.classList.toggle('dse-hide-actions', !!c.get('hideAiActions'));
     document.body.classList.toggle('dse-hide-badge', !!c.get('hideAiBadge'));
     document.body.classList.toggle('dse-input-frosted', !!c.get('inputFrosted'));
     document.body.classList.toggle('dse-fix-topbar', !!c.get('fixTopbar'));
     document.body.classList.toggle('dse-md-pretty', !!c.get('markdownPretty'));
   },
+  // 精确命中“下载应用”：只标记最小命中元素，绝不标记 .the-header / 按钮容器
   hideDownloadApp: function () {
     if (!DSE.config.get('hideDownloadApp')) return;
     if (Utils.currentSid()) return; // 仅欢迎页
-    var nodes = document.querySelectorAll('.the-header, [class*="the-header"]');
-    for (var i = 0; i < nodes.length; i++) {
-      var n = nodes[i];
-      if (n.offsetParent === null) continue;
-      if (/下载\s*(应用|APP|App)/.test(n.textContent || '') && (n.textContent || '').length < 12) {
-        // 找到可点击按钮的合适外层
-        var box = n.querySelector('[role="button"]') ? n : n;
-        box.setAttribute('data-dse-hide', '1');
+    var re = /^\s*下载\s*(应用|APP|App)\s*$/;
+    // 兜底：清掉历史版本误标在 header 上的隐藏标记
+    document.querySelectorAll('.the-header[data-dse-hide]').forEach(function (h) { h.removeAttribute('data-dse-hide'); });
+    var candidates = document.querySelectorAll('._9579690, [class*="ds-button"]');
+    for (var i = 0; i < candidates.length; i++) {
+      var n = candidates[i];
+      if (n.classList.contains('the-header')) continue;
+      // 自身文本恰好是“下载应用”，且内部确实含按钮/胶囊
+      if (re.test(n.textContent || '') && (n.textContent || '').length < 16 && n.querySelector('[role="button"],button')) {
+        n.setAttribute('data-dse-hide', '1');
       }
     }
   },
   hideAiBadgeText: function () {
     if (!DSE.config.get('hideAiBadge')) return;
-    // 文本兜底：隐藏“内容由 AI 生成”类标识（取最小命中元素）
     var re = /内容由\s*AI\s*生成|由\s*AI\s*生成|AI\s*generated/i;
     document.querySelectorAll('div,span,p').forEach(function (n) {
       if (n.getAttribute('data-dse-hide')) return;
+      // 绝不动设置面板自身（面板里有同名说明文字）
+      if (n.closest('#dse-panel')) return;
       if (n.children.length > 2) return;
       var t = (n.textContent || '').trim();
       if (t && t.length < 30 && re.test(t)) n.setAttribute('data-dse-hide', '1');
@@ -1618,23 +1362,35 @@ DSE.modules.tweaks = Tweaks;
 
 /* ===== modules/context.js ===== */
 /* ============================================================
- * modules/context：会话上下文用量统计（不在对话界面插 UI，只供设置面板展示）
+ * modules/context：会话上下文用量（只供设置面板展示，不在对话界面插 UI）
+ *
+ * 数据口径（关键）：
+ *  - SSE 的 accumulated_token_usage 是【服务端本轮请求的累计上下文 token】，
+ *    本身就是“当前对话总共占用”，直接取最大值即可，禁止逐轮累加（会翻倍）。
+ *  - 脚本注入前就已存在的历史对话：从 history/fetch_page 响应文本估算，
+ *    与服务端值取 max，因此刚打开旧对话也能看到用量。
+ *  - 全部按会话 id 隔离存储，切换会话互不影响。
  * ============================================================ */
 var Context = {
-  sid: '', committed: 0, turn: 0,
+  sid: '', live: 0,
+
   loadSid: function (sid) {
-    if (sid === this.sid) return;
-    this.sid = sid; this.turn = 0;
-    this.committed = DSE.config.session(sid).usedTokens || 0;
+    if (!sid || sid === this.sid) return;
+    this.sid = sid;
+    this.live = DSE.config.session(sid).serverTokens || 0;
     this.emit();
   },
-  onTokens: function (v) { this.turn = Math.max(this.turn, v); this.emit(); },
-  onFinished: function () {
-    if (this.turn > 0) {
-      this.committed += this.turn;
-      var s = DSE.config.session(this.sid);
-      s.usedTokens = this.committed; DSE.config.saveSessions();
-      this.turn = 0; this.emit();
+  setServer: function (sid, v) {
+    if (!sid || !(v > 0)) return;
+    this.loadSid(sid);
+    if (v > this.live) {
+      this.live = v;
+      var s = DSE.config.session(sid);
+      s.serverTokens = v;
+      // 服务端值是权威口径，同时校正估算值
+      if ((s.usedTokensEst || 0) < v) s.usedTokensEst = v;
+      DSE.config.saveSessions();
+      this.emit();
     }
   },
   onHistory: function (payload) {
@@ -1646,29 +1402,43 @@ var Context = {
         (m.fragments || []).forEach(function (f) { text += f.content || ''; });
         if (typeof m.content === 'string') text += m.content;
       });
+      var sid = (biz.chat_session && biz.chat_session.id) || this.sid;
+      if (!sid) return;
+      this.loadSid(sid);
       var est = Utils.estimateTokens(text);
-      if (est > this.committed) {
-        this.committed = est;
-        DSE.config.session(this.sid).usedTokens = est; DSE.config.saveSessions();
-        this.emit();
-      }
+      var s = DSE.config.session(sid);
+      // 估算只增不减；若服务端已有权威值，以其为下限
+      est = Math.max(est, s.serverTokens || 0);
+      if (est > (s.usedTokensEst || 0)) { s.usedTokensEst = est; DSE.config.saveSessions(); this.emit(); }
     } catch (e) {}
   },
-  // 供面板调用：返回 {used, limit, pct, level}
+  // 供面板调用：{used, limit, pct, level, source}
   getUsage: function () {
+    var sid = this.sid || Utils.currentSid();
+    var s = sid ? DSE.config.session(sid) : { serverTokens: 0, usedTokensEst: 0 };
+    var used = Math.max(s.serverTokens || 0, s.usedTokensEst || 0, this.live || 0);
     var limit = DSE.config.get('ctxLimitTokens') || 128000;
-    var used = this.committed + this.turn;
     var pct = Math.min(100, Math.round(used / limit * 100));
-    return { used: used, limit: limit, pct: pct, level: pct >= 90 ? 'danger' : (pct >= 75 ? 'warn' : 'ok') };
+    return {
+      used: used, limit: limit, pct: pct,
+      level: pct >= 90 ? 'danger' : (pct >= 75 ? 'warn' : 'ok'),
+      source: (s.serverTokens || 0) > 0 ? 'server' : 'estimate'
+    };
   },
   emit: function () { DSE.emit('ctx:update', this.getUsage()); },
-  reset: function () { this.committed = 0; this.turn = 0; var s = DSE.config.session(this.sid); s.usedTokens = 0; DSE.config.saveSessions(); this.emit(); },
+  reset: function () {
+    var sid = this.sid || Utils.currentSid();
+    if (!sid) return;
+    var s = DSE.config.session(sid); s.usedTokensEst = 0; s.serverTokens = 0;
+    this.live = 0; DSE.config.saveSessions(); this.emit();
+  },
   init: function () {
     var self = this;
-    DSE.on('sse:tokens', function (p) { self.loadSid(p.ctx.sid || Utils.currentSid()); self.onTokens(p.used); });
-    DSE.on('sse:finished', function () { self.onFinished(); });
-    DSE.on('history:loaded', function (p) { self.loadSid(p.ctx.sid || Utils.currentSid()); self.onHistory(p); });
-    setInterval(function () { var s = Utils.currentSid(); if (s !== self.sid) self.loadSid(s); }, 1000);
+    DSE.on('sse:tokens', function (p) { self.setServer(p.ctx.sid || Utils.currentSid(), p.used); });
+    DSE.on('history:loaded', function (p) {
+      self.loadSid(p.ctx.sid || Utils.currentSid()); self.onHistory(p);
+    });
+    setInterval(function () { var s = Utils.currentSid(); if (s && s !== self.sid) self.loadSid(s); }, 1000);
     DSE.on('cfg:change', function (e) { if (e.path === 'ctxLimitTokens') self.emit(); });
   }
 };
@@ -1779,122 +1549,6 @@ var Zoom = {
 };
 DSE.modules.zoom = Zoom;
 
-/* ===== modules/summary.js ===== */
-/* ============================================================
- * modules/summary：Waifu 长期对话总结（第一人称、增量更新、防臃肿）
- *  - 不走底层接口 / PoW：直接把总结提示词填入当前对话输入框，
- *    由官网原生管线发送（PoW、令牌全部由官网自己处理）
- *  - 手动 / 自动（超阈值，发送前 toast 提示）两种触发
- *  - AI 的总结回复到达后自动落库为 waifuSummary，并把这轮
- *    “总结请求/总结回复”从本地历史里剔除，避免上下文窗口膨胀
- * ============================================================ */
-var Summary = {
-  activePrompt: null,        // 正在发送的总结提示词原文（供 prompt 层跳过注入）
-  activeSid: null,           // 对应的会话
-  cooldownUntil: {},
-
-  // prompt 层调用：判断某个出站请求是不是我们的总结请求（是的话不再叠加 waifu 注入）
-  isSummaryRequest: function (ctx) {
-    if (!this.activePrompt) return false;
-    var obj = ctx && ctx.bodyObj;
-    return !!(obj && typeof obj.prompt === 'string' && obj.prompt === this.activePrompt);
-  },
-
-  buildPrompt: function (sid) {
-    var sess = DSE.config.session(sid);
-    var hist = (DSE.modules.antiRecall && DSE.modules.antiRecall.getHistory(sid)) || [];
-    var dialog = hist.slice(-60).map(function (m) {
-      return (m.role === 'user' ? '用户' : '我（AI）') + '：' + m.content;
-    }).join('\n');
-    var tpl = DSE.modules.prompt.tpl('summary');
-    return tpl
-      .replace('{max}', '500')
-      .replace('{old}', sess.waifuSummary || '（暂无）')
-      .replace('{dialog}', dialog || '（暂无）');
-  },
-
-  // 用 React 受控组件的原生 setter 写入输入框，再模拟回车发送
-  fillAndSend: function (text) {
-    var ta = document.querySelector(DSE.SEL.textarea);
-    if (!ta) return false;
-    var proto = window.HTMLTextAreaElement.prototype;
-    var setter = Object.getOwnPropertyDescriptor(proto, 'value').set;
-    ta.focus();
-    setter.call(ta, text);
-    ta.dispatchEvent(new Event('input', { bubbles: true }));
-    setTimeout(function () {
-      ta.dispatchEvent(new KeyboardEvent('keydown', {
-        key: 'Enter', code: 'Enter', keyCode: 13, which: 13, bubbles: true, cancelable: true
-      }));
-      ta.dispatchEvent(new KeyboardEvent('keypress', {
-        key: 'Enter', code: 'Enter', keyCode: 13, which: 13, bubbles: true, cancelable: true
-      }));
-      ta.dispatchEvent(new KeyboardEvent('keyup', {
-        key: 'Enter', code: 'Enter', keyCode: 13, which: 13, bubbles: true, cancelable: true
-      }));
-    }, 120);
-    return true;
-  },
-
-  // 触发一次总结（isAuto=true 为自动触发）
-  run: function (sid, isAuto) {
-    sid = sid || Utils.currentSid();
-    if (!sid) { Utils.toast('请先进入一个对话'); return Promise.resolve(null); }
-    if (this.activeSid === sid) return Promise.resolve(null);
-    var prompt = this.buildPrompt(sid);
-    if (!this.fillAndSend(prompt)) { Utils.toast('未找到输入框，无法发送总结请求'); return Promise.resolve(null); }
-    this.activePrompt = prompt;
-    this.activeSid = sid;
-    Utils.toast(isAuto
-      ? '对话较长，正在通过当前对话更新长期记忆摘要…'
-      : '已发送总结请求，回复将自动存为长期记忆');
-    return Promise.resolve(prompt);
-  },
-
-  init: function () {
-    var self = this;
-
-    // AI 回复结束：若这一轮是我们的总结请求，则把回复落库并清理本地历史中的该轮
-    DSE.on('sse:finished', function (p) {
-      var sid = (p.ctx && p.ctx.sid) || Utils.currentSid();
-      if (!self.activeSid || sid !== self.activeSid) return;
-      var AR = DSE.modules.antiRecall;
-      var hist = AR ? AR.getHistory(sid) : [];
-      // antiRecall 不会把总结请求计入 hist，因此末轮就是总结回复
-      var last = hist[hist.length - 1];
-      var answer = (last && last.role === 'assistant') ? (last.content || '').trim() : '';
-      if (answer) {
-        DSE.config.setSession(sid, { waifuSummary: answer });
-        DSE.emit('summary:updated', { sid: sid, summary: answer });
-        // 从本地上下文窗口剔除这条总结回复，防止摘要文本反复堆叠膨胀
-        if (AR) {
-          var s = DSE.config.session(sid);
-          s.hist = hist.slice(0, -1);
-          DSE.config.saveSessions();
-        }
-        Utils.toast('长期记忆摘要已更新');
-      }
-      self.activePrompt = null;
-      self.activeSid = null;
-    });
-
-    // 自动总结：每轮结束后按阈值判定，带冷却
-    DSE.on('sse:finished', function () {
-      var cfg = DSE.config.get();
-      if (cfg.mode !== 'waifu' || !cfg.waifu.autoSummary) return;
-      var sid = Utils.currentSid();
-      if (!sid || self.activeSid === sid) return;
-      if (Date.now() < (self.cooldownUntil[sid] || 0)) return;
-      var used = DSE.modules.context.getUsage().used;
-      if (used >= cfg.waifu.summaryThreshold) {
-        self.cooldownUntil[sid] = Date.now() + 180000; // 3 分钟冷却
-        setTimeout(function () { self.run(sid, true); }, 1200);
-      }
-    });
-  }
-};
-DSE.modules.summary = Summary;
-
 /* ===== modules/buttons.js ===== */
 /* ============================================================
  * modules/buttons：在输入工具条（深度思考/联网搜索旁）注入 设置 / 全屏 按钮
@@ -1957,7 +1611,8 @@ DSE.modules.buttons = Buttons;
 
 /* ===== settings/panel.js ===== */
 /* ============================================================
- * settings/panel：统一设置面板（移动优先；分区清晰、高级项折叠）
+ * settings/panel：统一设置面板（移动优先；分区清晰、不拥挤）
+ *  外观 / 对话 / 提示词 / 其他
  * ============================================================ */
 var Panel = {
   el: null, open_: false,
@@ -1973,7 +1628,7 @@ var Panel = {
     el.innerHTML =
       '<button class="dse-p-close" data-act="close">×</button>' +
       '<div class="dse-p-tabs">' +
-        [['look', '外观'], ['chat', '对话'], ['role', '角色'], ['priv', '隐私'], ['more', '其他']].map(function (t, i) {
+        [['look', '外观'], ['chat', '对话'], ['prompt', '提示词'], ['more', '其他']].map(function (t, i) {
           return '<button class="dse-p-tab' + (i === 0 ? ' dse-active' : '') + '" data-tab="' + t[0] + '">' + t[1] + '</button>';
         }).join('') +
       '</div><div class="dse-p-body">' +
@@ -1996,7 +1651,7 @@ var Panel = {
         '<div class="dse-p-sec">界面</div>' +
         this.sw('inputFrosted', '输入框悬浮磨砂') +
         this.sw('fixTopbar', '统一顶栏', '消除分享按钮单独底色/标题黑条') +
-        this.sw('hideDownloadApp', '隐藏“下载应用”', '仅移动版欢迎页') +
+        this.sw('hideDownloadApp', '隐藏“下载应用”', '仅欢迎页，不影响新建对话/侧栏按钮') +
         '<div class="dse-range-row"><span>页面缩放</span><input type="range" min="60" max="180" step="5" data-bind="zoom"><span class="dse-range-val" data-val="zoom"></span></div>' +
       '</div>' +
 
@@ -2004,63 +1659,34 @@ var Panel = {
       '<div class="dse-p-page" data-page="chat">' +
         '<div class="dse-p-title">消息呈现</div>' +
         this.sw('thinkAutoCollapse', '思考区自动折叠', '默认收起 DeepSeek 思考过程') +
-        this.sw('hideAiActions', '隐藏 AI 操作栏', '复制/重试/赞/踩/分享') +
         this.sw('hideAiBadge', '隐藏 AI 生成标识', '底部“内容由 AI 生成”等') +
-        '<div class="dse-p-sec">多消息气泡（\\ 分隔）</div>' +
-        this.sw('bubbleSplit', '开启多消息分割', 'AI 回复完成后按单独一行的 \\ 切成多条，依次浮现') +
-        this.sw('bubbleSplitAnim', '逐条浮现动画', '模拟真人发送间隔') +
-        '<div class="dse-p-sec">Markdown</div>' +
-        this.sw('markdownPretty', 'Markdown 排版美化', '关闭后会提示 AI 用纯文本回复') +
-        this.sw('markdownImage', '图片贴图', '允许 AI 用图片链接贴图，多消息下图片独立成条') +
+        this.sw('markdownPretty', 'Markdown 排版美化', '只改本地样式，不向 AI 发送任何指令') +
         this.sw('timeInject', '隐式时间注入') +
         '<div class="dse-p-sec">本会话上下文用量</div>' +
         '<div class="dse-ctx"><div class="dse-ctx-track"><div class="dse-ctx-fill" data-ctx-fill></div></div>' +
         '<div class="dse-ctx-meta"><span data-ctx-text></span><span data-ctx-pct></span></div></div>' +
-        '<div class="dse-range-row"><span>上下文上限</span><input type="range" min="32000" max="256000" step="8000" data-bind="ctxLimitTokens"><span class="dse-range-val" data-val="ctxLimitTokens"></span></div>' +
-        '<button class="dse-btn ghost" data-act="resetCtx" style="width:100%;margin-top:4px">重新统计</button>' +
+        '<div class="dse-range-row"><span>上下文上限</span><input type="range" min="32000" max="1024000" step="32000" data-bind="ctxLimitTokens"><span class="dse-range-val" data-val="ctxLimitTokens"></span></div>' +
+        '<div class="dse-row-desc" style="margin:-2px 0 6px">快速模式约 128K，专家模式(V3.2/V4)约 1M，按所用模型调整。</div>' +
+        '<button class="dse-btn ghost" data-act="resetCtx" style="width:100%">重新统计本会话</button>' +
       '</div>' +
 
-      // ============ 角色 / 提示词 ============
-      '<div class="dse-p-page" data-page="role">' +
-        '<div class="dse-p-title">运行模式</div>' +
-        '<div class="dse-cards" data-cards="mode">' +
-          '<button class="dse-card" data-card-val="assistant"><b>AI 助手</b><small>系统提示词仅当前会话生效，互不干扰，适合日常问答</small></button>' +
-          '<button class="dse-card" data-card-val="waifu"><b>Waifu 长期陪伴</b><small>系统提示词跨会话持久，配合第一人称长期记忆摘要</small></button>' +
-        '</div>' +
-        '<div data-modebox="assistant" style="margin-top:12px">' +
-          this.sw('systemPromptEnabled', '启用本会话系统提示词', '只对当前会话生效，切换会话互不影响') +
-          '<textarea class="dse-text" data-session="assistantSystemPrompt" placeholder="写给当前会话 AI 的系统设定…" style="min-height:110px;margin-top:8px"></textarea>' +
-        '</div>' +
-        '<div data-modebox="waifu" style="display:none;margin-top:12px">' +
-          '<div class="dse-row-desc" style="margin-bottom:6px">跨会话系统提示词（持久保存，随时可改）</div>' +
-          '<textarea class="dse-text" data-bind="waifu.systemPrompt" style="min-height:150px"></textarea>' +
-          '<div class="dse-btn-row"><button class="dse-btn ghost" data-act="waifuExample">恢复范例</button>' +
-          '<button class="dse-btn danger" data-act="waifuClear">清空</button></div>' +
-          '<details class="dse-details"><summary>长期记忆（对话总结）</summary>' +
-            this.sw('waifu.autoSummary', '自动总结', '上下文较长时自动更新长期记忆') +
-            '<div class="dse-range-row"><span>总结阈值</span><input type="range" min="2000" max="20000" step="1000" data-bind="waifu.summaryThreshold"><span class="dse-range-val" data-val="waifu.summaryThreshold"></span></div>' +
-            '<div class="dse-range-row"><span>上下文窗口</span><input type="range" min="10" max="120" step="2" data-bind="waifu.ctxWindowMessages"><span class="dse-range-val" data-val="waifu.ctxWindowMessages"></span></div>' +
-            '<div class="dse-btn-row"><button class="dse-btn" data-act="summaryNow">立即总结</button>' +
-            '<button class="dse-btn ghost" data-act="clearSummary">清除摘要</button></div>' +
-            '<div class="dse-row-desc" style="margin:8px 0 4px">当前长期记忆摘要</div>' +
-            '<textarea class="dse-text" data-session="waifuSummary" style="min-height:100px"></textarea>' +
-          '</details>' +
-        '</div>' +
-        '<details class="dse-details"><summary>高级：注入指令模板（透明可编辑）</summary>' +
-          '<label class="dse-row-desc">多消息分割指令</label><textarea class="dse-text" data-tpl="multi"></textarea>' +
-          '<label class="dse-row-desc" style="margin-top:8px">纯文本指令（关闭 Markdown 时）</label><textarea class="dse-text" data-tpl="noMarkdown"></textarea>' +
-          '<label class="dse-row-desc" style="margin-top:8px">图片贴图指令</label><textarea class="dse-text" data-tpl="image"></textarea>' +
-          '<label class="dse-row-desc" style="margin-top:8px">撤回后简短回应</label><textarea class="dse-text" data-tpl="recallBrief"></textarea>' +
-          '<label class="dse-row-desc" style="margin-top:8px">长期总结指令</label><textarea class="dse-text" data-tpl="summary" style="min-height:110px"></textarea>' +
+      // ============ 提示词 ============
+      '<div class="dse-p-page" data-page="prompt">' +
+        '<div class="dse-p-title">本会话系统提示词</div>' +
+        '<div class="dse-row-desc" style="margin-bottom:6px">只对当前这一个会话生效；切换到其它会话互不影响、互不可见。</div>' +
+        this.sw('systemPromptEnabled', '启用本会话系统提示词') +
+        '<textarea class="dse-text" data-session="assistantSystemPrompt" placeholder="写给当前会话 AI 的系统设定…" style="min-height:150px;margin-top:8px"></textarea>' +
+        '<details class="dse-details" style="margin-top:10px"><summary>高级：实际注入内容预览 / 模板</summary>' +
+          '<label class="dse-row-desc">撤回后简短回应（模板，可编辑）</label><textarea class="dse-text" data-tpl="recallBrief" style="min-height:80px"></textarea>' +
           '<div class="dse-btn-row"><button class="dse-btn ghost" data-act="resetTpl">恢复默认</button>' +
           '<button class="dse-btn ghost" data-act="previewPrompt">预览实际注入</button></div>' +
           '<div class="dse-preview" data-preview style="display:none"></div>' +
         '</details>' +
       '</div>' +
 
-      // ============ 隐私 ============
-      '<div class="dse-p-page" data-page="priv">' +
-        '<div class="dse-p-title">防撤回 / 隐私模式</div>' +
+      // ============ 其他 ============
+      '<div class="dse-p-page" data-page="more">' +
+        '<div class="dse-p-title">防撤回 / 隐私</div>' +
         '<div class="dse-seg" data-seg="privacyMode">' +
           '<button data-v="off">关闭</button><button data-v="smart">智能</button><button data-v="full">全量</button></div>' +
         '<div class="dse-row-desc" style="margin:8px 0">智能：连续撤回连续补回；服务端重载上下文后只补最新缺失轮次。全量：每次发送都拼接本地历史。</div>' +
@@ -2068,10 +1694,7 @@ var Panel = {
         '<div class="dse-range-row"><span>全量历史条数</span><input type="range" min="5" max="100" step="5" data-bind="privacyCtxMessages"><span class="dse-range-val" data-val="privacyCtxMessages"></span></div>' +
         '<div class="dse-p-sec" data-hist-info></div>' +
         '<button class="dse-btn danger" data-act="clearHist" style="width:100%">清除本会话本地历史</button>' +
-      '</div>' +
-
-      // ============ 其他 ============
-      '<div class="dse-p-page" data-page="more">' +
+        '<div class="dse-p-sec">便捷功能</div>' +
         this.sw('navButtons', '消息上下导航按钮') +
         this.sw('fullscreenBtn', '一键全屏按钮') +
         '<div class="dse-p-sec">关于</div>' +
@@ -2115,7 +1738,7 @@ var Panel = {
         var v = inp.type === 'range' ? Number(inp.value) : inp.value;
         DSE.config.set(path, v);
         var valEl = el.querySelector('[data-val="' + path + '"]');
-        if (valEl) valEl.textContent = inp.type === 'range' ? inp.value : '';
+        if (valEl) valEl.textContent = inp.type === 'range' ? Panel.fmtLimit(path, Number(inp.value)) : '';
         if (path === 'zoom') DSE.modules.zoom && DSE.modules.zoom.apply(Number(inp.value));
       });
     });
@@ -2139,17 +1762,18 @@ var Panel = {
     }, true);
   },
 
+  fmtLimit: function (path, v) {
+    if (path === 'ctxLimitTokens') return v >= 1000 ? (v / 1000) + 'K' : String(v);
+    return String(v);
+  },
+
   action: function (act) {
     var sid = Utils.currentSid();
     if (act === 'close') return this.hide();
     if (act === 'uploadBg') return this.el.querySelector('[data-role="bgFile"]').click();
     if (act === 'defaultBg') { DSE.config.set('bg.url', DSE.config.defaults.bg.url); DSE.config.set('bg.upload', ''); DSE.config.set('bg.enabled', true); this.refresh(); }
     if (act === 'clearBg') { DSE.config.set('bg.enabled', false); DSE.config.set('bg.upload', ''); this.refresh(); }
-    if (act === 'resetCtx') { DSE.config.setSession(sid, { usedTokens: 0 }); this.refreshCtx(); }
-    if (act === 'summaryNow') { var p = DSE.modules.summary.run(sid, false); this.hide(); return p; }
-    if (act === 'clearSummary') { DSE.config.setSession(sid, { waifuSummary: '' }); this.refresh(); }
-    if (act === 'waifuExample') { DSE.config.set('waifu.systemPrompt', DSE.config.defaults.waifu.systemPrompt); this.refresh(); }
-    if (act === 'waifuClear') { DSE.config.set('waifu.systemPrompt', ''); this.refresh(); }
+    if (act === 'resetCtx') { DSE.modules.context.reset(); this.refreshCtx(); }
     if (act === 'resetTpl') { DSE.modules.prompt.resetTpl(); this.refresh(); }
     if (act === 'previewPrompt') {
       var box = this.el.querySelector('[data-preview]');
@@ -2170,7 +1794,8 @@ var Panel = {
       if (document.activeElement !== inp) inp.value = v == null ? '' : v;
     });
     el.querySelectorAll('[data-val]').forEach(function (v) {
-      v.textContent = resolve(c, v.getAttribute('data-val')) ?? '';
+      var path = v.getAttribute('data-val');
+      v.textContent = Panel.fmtLimit(path, resolve(c, path)) ?? '';
     });
     el.querySelectorAll('[data-seg]').forEach(function (seg) {
       var cur = resolve(c, seg.getAttribute('data-seg'));
@@ -2187,9 +1812,6 @@ var Panel = {
     el.querySelectorAll('[data-tpl]').forEach(function (ta) {
       if (document.activeElement !== ta) ta.value = DSE.modules.prompt.tpl(ta.getAttribute('data-tpl'));
     });
-    el.querySelectorAll('[data-modebox]').forEach(function (b) {
-      b.style.display = b.getAttribute('data-modebox') === c.mode ? '' : 'none';
-    });
     this.refreshCtx();
     if (this.open_) this.position();
   },
@@ -2199,8 +1821,9 @@ var Panel = {
     if (!fill) return;
     fill.style.width = u.pct + '%';
     fill.className = 'dse-ctx-fill ' + (u.level === 'danger' ? 'danger' : u.level === 'warn' ? 'warn' : '');
-    var k = function (n) { return n >= 1000 ? (n / 1000).toFixed(1) + 'k' : String(n); };
-    this.el.querySelector('[data-ctx-text]').textContent = '约 ' + k(u.used) + ' / ' + k(u.limit) + (u.pct >= 75 ? '（建议新对话）' : '');
+    var k = function (n) { return n >= 1000 ? (n / 1000).toFixed(0) + 'K' : String(n); };
+    this.el.querySelector('[data-ctx-text]').textContent =
+      '约 ' + k(u.used) + ' / ' + k(u.limit) + (u.source === 'estimate' ? '（估算）' : '') + (u.pct >= 75 ? '（建议新对话）' : '');
     this.el.querySelector('[data-ctx-pct]').textContent = u.pct + '%';
     var hist = DSE.modules.antiRecall.getHistory(Utils.currentSid());
     var recalled = hist.filter(function (h) { return h.recalled && !h.serverHas; }).length;
@@ -2232,7 +1855,6 @@ var Panel = {
     var self = this;
     Utils.onReady(function () { self.build(); });
     DSE.on('ctx:update', function () { if (self.open_) self.refreshCtx(); });
-    DSE.on('summary:updated', function () { if (self.open_) self.refresh(); });
     document.addEventListener('keydown', function (e) {
       if (e.ctrlKey && e.shiftKey && (e.key === 'B' || e.code === 'KeyB')) { e.preventDefault(); self.toggle(); }
     });
@@ -2257,7 +1879,6 @@ DSE.modules.panel = Panel;
     'context',
     'nav',
     'zoom',
-    'summary',
     'buttons',
     'panel'
   ];

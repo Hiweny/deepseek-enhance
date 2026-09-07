@@ -87,3 +87,12 @@
 
 - `harness/lib.js`：Playwright 驱动系统 Chromium，复用登录态 `mobile-state.json`，以 addInitScript 注入用户脚本并 polyfill GM_* API，等价模拟油猴/ WebView 注入。
 - 每个功能必须留下「桌面/移动 × 明/暗」截图证据后才算完成。
+
+## 8. v8.1 补充实测（2026-09-07）
+
+- **思考折叠头的纯色条来自伪元素**：`._74c0879`（卡片外层）内部 `._245c867._34a54ec` 的 `::before/::after` 被站点设为纯色（暗色 rgb(21,21,23)、亮色近白），只改外层 background 盖不住，视觉上就是一条直角黑/白条。必须 `content:none!important` 移除这两个伪元素，再给外层做圆角磨砂。
+- 折叠态：站点移除 `.ds-think-content`；展开态重新插回，二者共用 `._74c0879` 卡片，内层 `c99b79f8 / c2b72bb8 / _8f7678d` 全部透明即可统一。
+- **用户长消息折叠**：`.fbb737a4` 内并列两个节点——`.ds-collapsible-text`（inline style `max-height:192px`）与展开按钮 `.ds-collapsible-text-toggle-button._5b3c8cd`；按钮外层 `pointer-events:none`，真正可点的是内部 `._08f18f6`（pointer-events:all）。气泡样式不得移动/包裹这两个节点。
+- **欢迎页“下载应用”精确定位**：按钮本体容器 `._9579690`（文本恰为“下载应用”），它与「新对话」iconLabelPrimary 胶囊同处 `._1aa2651.the-header`；**只隐藏 `._9579690`，绝不能给 `.the-header` 整体打隐藏标记**（旧版误伤导致新建对话/侧栏按钮一起消失）。
+- **SSE 增量解析**：响应改写会改变文本长度，事件解析游标必须按【原始 raw 长度】推进；防撤回转换器自行维护“持久行数组 + 已处理行数”，且 XHR responseText 会被站点重复读取，撤回发生后每次读取都要用持久行数组重建，不能提前 return 原文。
+- **token 用量**：`accumulated_token_usage` 是服务端按整轮上下文累计的值，直接取会话级最大值，禁止逐轮相加；路径式 op `response/accumulated_token_usage` 也要识别。
