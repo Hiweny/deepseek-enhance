@@ -79,7 +79,7 @@ node build.js               # 拼接出最终脚本
 
 - **document-start 注入**：通过 androidx.webkit 的 `addDocumentStartJavaScript` 在页面任何脚本前运行（旧 WebView 回退 onPageStarted）；早期脚本与 inject.js 整体包在同一个 IIFE 内（顶层 `return` 会导致整段语法错误而静默失效，v8.3.1 已修复），viewport/主题首帧即正确，顶栏不错位；
 - **全屏沉浸**：透明状态栏/导航栏、shortEdges 刘海延伸、IMMERSIVE_STICKY，无黑线、无开屏广告；
-- **键盘适配**：WindowInsets 监听 IME 高度，手动撑起 WebView，输入框始终在键盘上方；覆写 `onCreateInputConnection`（多行 + `IME_ACTION_SEND`、清除 `IME_FLAG_NO_ENTER_ACTION`），输入法**同时保留「换行」键并显示独立「发送」动作键**，物理键盘 Enter 发送、Shift+Enter 换行；
+- **键盘适配**：经典全屏标志（LAYOUT_FULLSCREEN/LAYOUT_HIDE_NAVIGATION，不用 decorFitsSystemWindows edge-to-edge）+ `SOFT_INPUT_ADJUST_RESIZE`，由系统直接缩放窗口，固定底栏被键盘自然顶起（edge-to-edge 手动补 IME padding 在部分 WebView 不派发，已弃用）；覆写 `onCreateInputConnection`（多行 + `IME_ACTION_SEND`、清除 `IME_FLAG_NO_ENTER_ACTION`），输入法**同时保留「换行」键并显示独立「发送」动作键**；发送键精确命中 `.ds-button--primary.ds-button--filled` 蓝色实心圆（左侧 iconLabelPrimary 是附件键，不能点），回调必须 `runOnUiThread`；物理键盘 Enter 发送、Shift+Enter 换行；
 - **系统级分享联动**：Manifest 注册 `ACTION_SEND text/plain`，任意 App 选中文本 → 分享 → DeepSleep，经 `@JavascriptInterface` 桥用 React 原生 setter 填入输入框；
 - **线程安全**：输入法动作键回调在 IME binder 线程，`evaluateJavascript` 必须 `runOnUiThread` 回主线程，否则点发送即闪退；
 - **APK 专属出厂默认**（document-start 仅在配置不存在时写入，不影响油猴脚本）：顶栏背景透出、全屏按钮关、时间注入开；
