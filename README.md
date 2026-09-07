@@ -77,9 +77,10 @@ node build.js               # 拼接出最终脚本
 
 `android/` 是把同源 `dist/inject.js` 装进原生 WebView 的全屏套壳工程（应用名 DeepSleep）：
 
-- **document-start 注入**：通过 androidx.webkit 的 `addDocumentStartJavaScript` 在页面任何脚本前运行（旧 WebView 回退 onPageStarted），viewport/主题首帧即正确，顶栏不错位；
+- **document-start 注入**：通过 androidx.webkit 的 `addDocumentStartJavaScript` 在页面任何脚本前运行（旧 WebView 回退 onPageStarted）；早期脚本与 inject.js 整体包在同一个 IIFE 内（顶层 `return` 会导致整段语法错误而静默失效，v8.3.1 已修复），viewport/主题首帧即正确，顶栏不错位；
 - **全屏沉浸**：透明状态栏/导航栏、shortEdges 刘海延伸、IMMERSIVE_STICKY，无黑线、无开屏广告；
-- **键盘适配**：WindowInsets 监听 IME 高度，手动撑起 WebView，输入框始终在键盘上方；WebView 内回车直接发送（Shift+回车换行）；
+- **键盘适配**：WindowInsets 监听 IME 高度，手动撑起 WebView，输入框始终在键盘上方；覆写 `onCreateInputConnection`（多行 + `IME_ACTION_SEND`、清除 `IME_FLAG_NO_ENTER_ACTION`），输入法**同时保留「换行」键并显示独立「发送」动作键**，物理键盘 Enter 发送、Shift+Enter 换行；
+- **系统级分享联动**：Manifest 注册 `ACTION_SEND text/plain`，任意 App 选中文本 → 分享 → DeepSleep，经 `@JavascriptInterface` 桥用 React 原生 setter 填入输入框；
 - **开屏页**：居中睡鲸 logo，底色随系统明暗（values-night），首屏渲染后淡出；
 - **主题跟随系统**：document-start 按系统明暗写入 DeepSeek 主题键，系统切换后自动刷新；
 - 保留文件上传（识图）、摄像头/麦克风按需授权、网页内返回。
