@@ -1,21 +1,17 @@
-/* styles/bubbles：气泡材质（默认 / 磨砂 / 水玻璃）+ 气泡尾巴 + 多消息动画 */
+/* styles/bubbles：气泡材质（默认 / 磨砂 / 水玻璃），不做尾巴、不改结构 */
 Bridge.addStyle(`
-/* ===== AI 气泡通用 ===== */
-.dse-ai-bubble{position:relative;isolation:isolate;border-radius:18px;border-bottom-left-radius:6px;
-  padding:12px 16px;margin:0 0 10px;line-height:1.7;word-break:break-word;
-  transition:transform .18s, box-shadow .18s}
-.dse-ai-bubble:last-child{margin-bottom:0}
-/* ===== 用户气泡（站点容器 .fbb737a4） ===== */
-.dse-user-bubble{position:relative;border-radius:18px!important;border-bottom-right-radius:6px!important;
-  transition:filter .2s, background .2s}
+/* ===== 消息行间距：AI 与下一条消息不贴在一起 ===== */
+._4f9bf79, ._9663006{margin-bottom:14px}
+._4f9bf79:last-child, ._9663006:last-child{margin-bottom:4px}
 
-/* 尾巴：AI 左下角小折角（isolation 内 -1 层，只在气泡外露出） */
-.dse-ai-bubble::after{content:"";position:absolute;left:-6px;bottom:0;width:12px;height:14px;
-  background:inherit;border-bottom-right-radius:12px 10px;z-index:-1;
-  box-shadow:inherit}
-/* 用户气泡右下角折角 */
-.dse-user-bubble::before{content:"";position:absolute;right:-5px;bottom:0;width:11px;height:13px;
-  background:inherit;border-bottom-left-radius:11px 9px;z-index:0}
+/* ===== AI 气泡 ===== */
+.dse-ai-bubble{position:relative;border-radius:16px;padding:12px 16px;margin:0;
+  line-height:1.7;word-break:break-word;transition:background .2s, box-shadow .2s, border-color .2s}
+/* ===== 用户气泡（站点容器 .fbb737a4），只改质感，不动布局/折叠交互 ===== */
+.dse-user-bubble{position:relative;border-radius:16px!important;transition:filter .2s, background .2s}
+/* 用户长消息的官网“展开/收起”保持可点、不被遮挡 */
+.dse-user-bubble .ds-collapsible-text,
+.dse-user-bubble [class*="collapsible"]{position:relative;z-index:2}
 
 /* ---------- 预设：default ---------- */
 body.dse-preset-default .dse-ai-bubble{background:#fff;color:#1d2129;border:1px solid rgba(0,0,0,.06);
@@ -24,7 +20,6 @@ body.dse-preset-default.dark .dse-ai-bubble{background:rgba(40,42,50,.92);color:
 body.dse-preset-default .dse-user-bubble{background:#e8eefc!important;color:#1d2129!important}
 body.dse-preset-default.dark .dse-user-bubble{background:rgba(59,108,246,.32)!important;color:#eef2ff!important}
 
-.dse-user-bubble > *{position:relative;z-index:1}
 /* ---------- 预设：frosted（iOS 磨砂） ---------- */
 body.dse-preset-frosted .dse-ai-bubble{background:rgba(255,255,255,.86);color:#1d2129;
   border:1px solid rgba(255,255,255,.65);backdrop-filter:blur(22px) saturate(180%);-webkit-backdrop-filter:blur(22px) saturate(180%);
@@ -35,7 +30,7 @@ body.dse-preset-frosted .dse-user-bubble{background:rgba(59,108,246,.72)!importa
   backdrop-filter:blur(22px) saturate(180%);-webkit-backdrop-filter:blur(22px) saturate(180%)}
 body.dse-preset-frosted.dark .dse-user-bubble{background:rgba(59,108,246,.6)!important}
 
-/* ---------- 预设：water（水玻璃：高光+折射感，不用 SVG 位移以免糊字） ---------- */
+/* ---------- 预设：water（水玻璃：高光+折射感） ---------- */
 body.dse-preset-water .dse-ai-bubble{color:#1d2129;border:1px solid rgba(255,255,255,.6);
   background:linear-gradient(135deg,rgba(255,255,255,.9),rgba(255,255,255,.74));
   backdrop-filter:blur(18px) saturate(165%) brightness(1.03);-webkit-backdrop-filter:blur(18px) saturate(165%) brightness(1.03);
@@ -52,16 +47,4 @@ body.dse-preset-water .dse-user-bubble{color:#fff!important;
   backdrop-filter:blur(14px) saturate(165%);-webkit-backdrop-filter:blur(14px) saturate(165%);
   box-shadow:0 4px 16px rgba(59,108,246,.22), inset 0 1px 0 rgba(255,255,255,.28)}
 body.dse-preset-water.dark .dse-user-bubble{background:linear-gradient(135deg,rgba(59,108,246,.55),rgba(80,110,220,.42))!important}
-
-/* 多消息：独立图片条（不套气泡） */
-.dse-img-msg{margin:0 0 10px;line-height:0}
-.dse-img-msg img{max-width:100%;border-radius:12px;box-shadow:0 4px 18px rgba(15,23,42,.12);cursor:zoom-in;display:block}
-
-/* 出现动画（仅新消息；历史消息不播，避免重载重分） */
-@keyframes dseBubbleIn{from{opacity:0;transform:translateY(14px) scale(.985)}to{opacity:1;transform:none}}
-.dse-ai-bubble.dse-wait{opacity:0;transform:translateY(10px)}
-.dse-bubble-in{animation:dseBubbleIn .34s cubic-bezier(.22,1,.36,1) both}
-
-/* think 折叠按钮微调 */
-.dse-think-collapsed-hint{opacity:.8}
 `);

@@ -15,7 +15,7 @@ const ORDER = [
   ['modules/background.js'], ['modules/antirecall.js'], ['modules/prompt.js'],
   ['modules/think.js'], ['modules/bubbles.js'], ['modules/tweaks.js'],
   ['modules/context.js'], ['modules/nav.js'], ['modules/zoom.js'],
-  ['modules/summary.js'], ['modules/buttons.js'],
+  ['modules/buttons.js'],
   ['settings/panel.js'],
   ['main.js'], ['footer.js']
 ].map((x) => x[0]);

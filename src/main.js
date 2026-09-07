@@ -13,7 +13,6 @@
     'context',
     'nav',
     'zoom',
-    'summary',
     'buttons',
     'panel'
   ];

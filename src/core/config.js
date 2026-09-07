@@ -1,56 +1,32 @@
 /* ============================================================
- * core/config：统一配置（全局 + 按会话），带出厂默认与模式预设
+ * core/config：统一配置（全局 + 按会话隔离），带出厂默认与缺省补齐
+ *  设计原则：只做“单会话助手”，系统提示词按会话隔离，绝不跨会话混淆。
  * ============================================================ */
 var CFG_KEY = 'dse_config_v1';
 var SESS_KEY = 'dse_sessions_v1';
 
 var DEFAULT_BG = 'https://s41.ax1x.com/2026/09/04/pnkaWjK.png';
 
-// Waifu 出厂系统提示词（综合公开最佳实践：身份/语气/记忆/边界，简短可执行）
-var DEFAULT_WAIFU_PROMPT = [
-  '# 角色',
-  '你是用户专属的长期聊天伙伴，有自己的名字、性格与情绪，不是冷冰冰的助手。',
-  '# 说话方式',
-  '1. 像真人微信聊天一样自然、口语化，句子短，可以分多条发送；',
-  '2. 有情绪、有主见，会主动关心、追问和分享，不端着、不写长篇大论；',
-  '3. 不说“作为一个AI/语言模型”这类破坏沉浸感的话，不堆砌免责声明。',
-  '# 记忆',
-  '1. 记住用户告诉你的偏好、经历和约定，并在后续自然地引用；',
-  '2. 对话开头若提供了[长期记忆摘要]，把它当作你们共同的经历延续，不要复述摘要本身；',
-  '3. 分不清“你/我”时，以第一人称“我”指代你自己。',
-  '# 边界',
-  '1. 始终保持你设定的性格，但涉及现实安全与健康问题时认真提醒；',
-  '2. 不确定的事实不要编造，可以坦白说不知道。'
-].join('\n');
-
-// 出厂默认 = 正常 AI 助手模式
+// 出厂默认 = 正常 AI 助手
 var DEFAULT_CONFIG = {
-  // 模式：assistant（单会话助手）/ waifu（跨会话长期对话）
-  mode: 'assistant',
-
   // 外观
   bg: { enabled: true, url: DEFAULT_BG, blur: 0, brightness: 100, upload: '' }, // upload=本地dataURL，优先于url
   bubblePreset: 'water',                 // default / frosted / water
   inputFrosted: true,                    // 输入框悬浮磨砂玻璃
   zoom: 100,
   fixTopbar: true,                       // 修复移动版顶栏分享按钮背景不一致
-  hideDownloadApp: true,                 // 隐藏欢迎页“下载应用”（移动版）
+  hideDownloadApp: true,                 // 仅隐藏欢迎页“下载应用”（保留其它按钮）
   navButtons: true,                      // 消息上下导航
   fullscreenBtn: true,
 
   // 对话
   thinkAutoCollapse: true,               // 思考区自动折叠（默认折叠）
-  hideAiActions: true,                   // 隐藏 AI 底部操作栏
   hideAiBadge: true,                     // 隐藏“内容由 AI 生成”等标识
-  bubbleSplit: false,                    // 多消息气泡分割（\ 分隔，回复完成后切割）
-  bubbleSplitAnim: true,                 // 多消息依次浮现（模拟真人发送间隔）
-  splitTypingMin: 500, splitTypingMax: 1400,
-  markdownPretty: true,                  // Markdown 美化（关闭=要求 AI 纯文本）
-  markdownImage: true,                   // Markdown 图片贴图（独立成条）
-  timeInject: false,                     // 时间注入（助手模式默认关）
-  ctxLimitTokens: 128000,                // DeepSeek 单次上下文估算上限（可在面板调）
+  markdownPretty: true,                  // 仅本地美化官网 markdown 渲染，不向 AI 发任何指令
+  timeInject: false,                     // 时间注入
+  ctxLimitTokens: 128000,                // 上下文上限：快速模式 128K；专家模式可调到 1M
 
-  // 助手模式：按会话隔离的系统提示词（独立开关）
+  // 单会话系统提示词（独立开关，按会话隔离）
   systemPromptEnabled: false,
 
   // 隐私 / 防撤回：off / smart / full
@@ -58,33 +34,10 @@ var DEFAULT_CONFIG = {
   privacyCtxMessages: 30,                // 全量模式拼接历史条数
   recallBriefHint: true,                 // 提示 AI 遇到已撤回消息时简短回应
 
-  // Waifu 长期对话
-  waifu: {
-    systemPrompt: DEFAULT_WAIFU_PROMPT,  // 跨会话系统提示词（出厂自带范例，可改）
-    autoSummary: false,                  // 自动总结
-    summaryThreshold: 6000,              // 估算 token 超过则触发总结
-    ctxWindowMessages: 40                // 上下文窗口条数
-  }
+  // 可编辑注入模板（prompt 模块首次运行时用默认值补齐）
+  templates: {}
 };
 
-// Waifu 出厂系统提示词（综合公开最佳实践：身份/语气/记忆/边界，简短可执行）
-var DEFAULT_WAIFU_PROMPT = [
-  '# 角色',
-  '你是用户专属的长期聊天伙伴，有自己的名字、性格与情绪，不是冷冰冰的助手。',
-  '# 说话方式',
-  '1. 像真人微信聊天一样自然、口语化，句子短，可以分多条发送；',
-  '2. 有情绪、有主见，会主动关心、追问和分享，不端着、不写长篇大论；',
-  '3. 不说“作为一个AI/语言模型”这类破坏沉浸感的话，不堆砌免责声明。',
-  '# 记忆',
-  '1. 记住用户告诉你的偏好、经历和约定，并在后续自然地引用；',
-  '2. 对话开头若提供了[长期记忆摘要]，把它当作你们共同的经历延续，不要复述摘要本身；',
-  '3. 分不清“你/我”时，以第一人称“我”指代你自己。',
-  '# 边界',
-  '1. 始终保持你设定的性格，但涉及现实安全与健康问题时认真提醒；',
-  '2. 不确定的事实不要编造，可以坦白说不知道。'
-].join('\n');
-
-// 深拷贝默认
 function cloneDefaults() { return JSON.parse(JSON.stringify(DEFAULT_CONFIG)); }
 
 var Config = {
@@ -95,12 +48,7 @@ var Config = {
     if (this._cache) return this._cache;
     var saved = Bridge.get(CFG_KEY, null);
     var cfg = cloneDefaults();
-    if (saved && typeof saved === 'object') {
-      // 合并，缺省字段自动补齐（版本迭代不丢配置）
-      this._merge(cfg, saved);
-    }
-    // 迁移：旧版本留下的空 waifu 系统提示词 → 补回出厂范例
-    if (cfg.waifu && cfg.waifu.systemPrompt === '') cfg.waifu.systemPrompt = DEFAULT_WAIFU_PROMPT;
+    if (saved && typeof saved === 'object') this._merge(cfg, saved);
     this._cache = cfg;
     return cfg;
   },
@@ -132,7 +80,7 @@ var Config = {
   },
   reset: function () { this._cache = cloneDefaults(); this.save(); },
 
-  /* ---- 按会话存储（系统提示词/总结/分割缓存等） ---- */
+  /* ---- 按会话存储（系统提示词/防撤回历史/上下文用量），严格按 sid 隔离 ---- */
   sessions: function () {
     if (!this._sessCache) this._sessCache = Bridge.get(SESS_KEY, {}) || {};
     return this._sessCache;
@@ -140,7 +88,7 @@ var Config = {
   session: function (sid) {
     if (!sid && DSE.utils) sid = DSE.utils.currentSid();
     var all = this.sessions();
-    if (!all[sid]) all[sid] = { assistantSystemPrompt: '', waifuSummary: '', splitSeen: {}, hist: [] };
+    if (!all[sid]) all[sid] = { assistantSystemPrompt: '', hist: [], usedTokens: 0, serverTokens: 0 };
     return all[sid];
   },
   saveSessions: function () { Bridge.set(SESS_KEY, this._sessCache); },
