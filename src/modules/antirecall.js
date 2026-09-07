@@ -117,23 +117,35 @@ var AntiRecall = {
     };
   },
 
+  // 采用 FrankyT 成熟范式：持久化“行数组 + 已处理行数游标”。
+  // 改写过的行一直保留在行数组里，因此任意时刻重复读取都能重建出完整改写文本；
+  // 游标按【原始文本行数】推进，不受改写后长度变化影响。
   transformSSE: function (raw, ctx) {
-    if (!ctx._arState) { ctx._arState = this.makeState(ctx.sid); ctx._arLast = 0; }
+    if (!ctx._arState) { ctx._arState = this.makeState(ctx.sid); ctx._arLines = null; ctx._arCount = 0; }
     var st = ctx._arState;
-    if (raw.length <= ctx._arLast) return raw;
-    var tail = raw.substring(ctx._arLast), lines = tail.split('\n'), changed = false;
-    for (var i = 0; i < lines.length; i++) {
-      var ln = lines[i];
-      if (ln.indexOf('data:') !== 0) continue;
+    var lines = raw.split('\n');
+    if (!ctx._arLines) ctx._arLines = lines;
+    else {
+      // 与上次相比新增的行追加到持久行数组（旧行可能已被改写，必须保留）
+      for (var a = ctx._arCount; a < lines.length; a++) ctx._arLines[a] = lines[a];
+    }
+    var anyReplaced = false;
+    // 只处理新增行（最后一段常为空串，与参考实现一致处理到 length-1）
+    for (var i = ctx._arCount; i < ctx._arLines.length - 1; i++) {
+      var ln = ctx._arLines[i];
+      if (!ln || ln.indexOf('data:') !== 0) continue;
       try {
         var data = JSON.parse(ln.replace(/^data:\s*/, ''));
-        if (data.v) { var repl = st.update(data, this); if (repl) { lines[i] = 'data: ' + repl; changed = true; } }
+        if (data.v) {
+          var repl = st.update(data, this);
+          if (repl) { ctx._arLines[i] = 'data: ' + repl; anyReplaced = true; }
+        }
       } catch (e) {}
     }
-    var out = changed ? raw.substring(0, ctx._arLast) + lines.join('\n') : raw;
-    ctx._arLast = out.length;
-    ctx._arState = st;
-    return out;
+    ctx._arCount = ctx._arLines.length - 1;
+    // 只要本轮发生过撤回（st.recalled），每次都用持久行数组重建，保证重复读取仍是改写版
+    if (st.recalled || anyReplaced) return ctx._arLines.join('\n');
+    return raw;
   },
   commitTurn: function (ctx) {
     var st = ctx._arState; if (!st) return;
@@ -185,8 +197,7 @@ var AntiRecall = {
     DSE.net.addRequestMutator(function (obj, ctx) {
       if (obj && typeof obj.prompt === 'string' && /\/chat\/completion$/.test(ctx.url)) {
         var sid = obj.chat_session_id || '';
-        var isSummary = DSE.modules.summary && DSE.modules.summary.isSummaryRequest(ctx);
-        if (!isSummary) AR.pushHistory(sid, { role: 'user', content: obj.prompt, ts: Date.now(), recalled: false });
+        AR.pushHistory(sid, { role: 'user', content: obj.prompt, ts: Date.now(), recalled: false });
       }
     });
     // 响应转换

@@ -103,8 +103,7 @@ var Net = {
       window.fetch = function (input, init) {
         try {
           var url = typeof input === 'string' ? input : (input && input.url) || '';
-          if (init && init._dseSummary) { /* 内部总结请求，跳过一切改写 */ }
-          else if (self.isGenUrl(url) && init && typeof init.body === 'string' && init.body.charAt(0) === '{') {
+          if (self.isGenUrl(url) && init && typeof init.body === 'string' && init.body.charAt(0) === '{') {
             var obj = JSON.parse(init.body);
             self._reqMutators.forEach(function (fn) { try { fn(obj, { url: url, isGen: true, isHistory: false, sid: obj.chat_session_id }); } catch (e) {} });
             init = Object.assign({}, init, { body: JSON.stringify(obj) });
@@ -116,15 +115,18 @@ var Net = {
   },
 
   _handleSSE: function (xhr, ctx, raw) {
-    if (raw.length <= ctx.lastLen && xhr._dseCached) return xhr._dseCached;
-    // 先跑外部转换器（防撤回等需要改写 SSE）
+    // 同一份原文重复读取时直接返回缓存（XHR getter 会被站点多次调用）
+    if (xhr._dseRaw === raw && xhr._dseCached != null) return xhr._dseCached;
+    // 先跑外部转换器（防撤回等需要改写 SSE；转换器内部自行维护增量状态）
     var text = raw;
     for (var i = 0; i < this._respTransformers.length; i++) {
       text = this._respTransformers[i](text, ctx) || text;
     }
-    // 增量解析新增部分，抽取事件
+    // 事件解析按【原始文本】的游标增量推进——转换器改写会改变长度，
+    // 绝不能用改写后长度做偏移，否则后续事件全部错位
     try {
-      var tail = text.substring(ctx.lastLen);
+      var rawLast = ctx.rawLast || 0;
+      var tail = raw.substring(rawLast);
       var lines = tail.split('\n');
       for (var li = 0; li < lines.length; li++) {
         var ln = lines[li];
@@ -138,7 +140,7 @@ var Net = {
           ctx.sse.reqMid = data.request_message_id; ctx.sse.respMid = data.response_message_id;
           DSE.emit('sse:ready', { ctx: ctx, data: data });
         }
-        // token 用量
+        // token 用量（服务端累计值）
         var used = this._pickTokens(data);
         if (used != null) { ctx.sse.tokens = used; DSE.emit('sse:tokens', { used: used, ctx: ctx }); }
         // 结束状态（兼容直接路径与 BATCH；只触发一次）
@@ -149,8 +151,9 @@ var Net = {
         if (finished && !ctx.sse.finished) { ctx.sse.finished = true; DSE.emit('sse:finished', { ctx: ctx }); }
         DSE.emit('sse:data', { data: data, ctx: ctx, event: ctx._lastEvent });
       }
+      ctx.rawLast = raw.length;
     } catch (e) {}
-    ctx.lastLen = text.length;
+    xhr._dseRaw = raw;
     xhr._dseCached = text;
     return text;
   },
@@ -162,6 +165,8 @@ var Net = {
       for (var i = 0; i < data.v.length; i++)
         if (data.v[i].p === 'accumulated_token_usage' && typeof data.v[i].v === 'number') return data.v[i].v;
     }
+    // 路径式 SET op
+    if (data.p === 'response/accumulated_token_usage' && typeof data.v === 'number') return data.v;
     return null;
   },
 
