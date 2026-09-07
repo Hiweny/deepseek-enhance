@@ -5,7 +5,6 @@ import android.app.Activity;
 import android.content.Intent;
 import android.content.pm.PackageManager;
 import android.content.res.Configuration;
-import android.graphics.Color;
 import android.net.Uri;
 import android.os.Build;
 import android.os.Bundle;
@@ -29,10 +28,6 @@ import android.webkit.WebViewClient;
 import android.widget.FrameLayout;
 import android.widget.ImageView;
 
-import androidx.core.graphics.Insets;
-import androidx.core.view.ViewCompat;
-import androidx.core.view.WindowCompat;
-import androidx.core.view.WindowInsetsCompat;
 import androidx.webkit.WebViewCompat;
 import androidx.webkit.WebViewFeature;
 
@@ -61,35 +56,40 @@ public class MainActivity extends Activity {
                 == Configuration.UI_MODE_NIGHT_YES;
     }
 
-    /** WebView 首屏底色（避免加载/重载瞬间露出白屏，跟随系统明暗） */
+    /** WebView 首屏底色（避免加载/重载瞬间露白，跟随系统明暗） */
     private int pageBgColor() { return isDark() ? 0xFF0D0F15 : 0xFFF4F6FB; }
+    private String pageBgCss() { return isDark() ? "#0D0F15" : "#F4F6FB"; }
 
     /* 早期脚本“内部代码”（不含 IIFE 外壳，方便组合） */
     private String earlyInner() {
         boolean dark = isDark();
+        String bg = pageBgCss();
         return "window.__DSE_WEBVIEW__=true;"
-                // viewport：必须在页面布局前生效，否则官网按错误安全区排版（顶栏错位）
+                // viewport：必须在页面布局前生效
                 + "try{var m=document.querySelector('meta[name=viewport]');"
                 + "if(!m){m=document.createElement('meta');m.name='viewport';(document.head||document.documentElement).appendChild(m);}"
                 + "m.content='width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover';}catch(e){}"
-                // APK 专属出厂默认（仅首次、用户未改过配置时写入；不影响油猴脚本）：
-                // 顶栏背景透出、全屏按钮关、时间注入开
+                // 首帧底色：在页面任何样式生效前压住 html/body，杜绝深色下官网默认白底闪烁
+                + "try{var ss=document.getElementById('__dse_firstpaint')||document.createElement('style');"
+                + "ss.id='__dse_firstpaint';ss.textContent='html,body{background:" + bg + "!important}';"
+                + "(document.head||document.documentElement).appendChild(ss);"
+                + "window.addEventListener('load',function(){var e=document.getElementById('__dse_firstpaint');if(e)e.remove();});"
+                + "}catch(e){}"
+                // APK 专属出厂默认（仅首次、用户未改过配置时写入；不影响油猴脚本）
                 + "try{if(!localStorage.getItem('dse_config_v1')){"
                 + "localStorage.setItem('dse_config_v1',JSON.stringify({topbarStyle:'transparent',fullscreenBtn:false,timeInject:true}));}}catch(e){}"
-                // 主题跟随系统：DeepSeek 主题键，document-start 写入，首帧即正确明暗
+                // 主题跟随系统
                 + "try{var KEY='__appKit_@deepseek/chat_themePreference';"
-                + "function dseApplyTheme(){localStorage.setItem(KEY,JSON.stringify({value:'" + (dark ? "dark" : "light") + "',__version:'0'}));}"
+                + "function dseApplyTheme(){localStorage.setItem(KEY,JSON.stringify({value:'" + (dark ? "dark" : "light") + "',__version':'0'}));}"
                 + "dseApplyTheme();"
                 + "window.addEventListener('storage',function(e){if(e.key===KEY)setTimeout(dseApplyTheme,0)});"
                 + "}catch(e){}"
-                // 物理/外接键盘 Enter 发送（Shift 或输入法组词期间保持换行）
+                // 物理/外接键盘 Enter 发送（Shift 或组词期间换行）
                 + "document.addEventListener('keydown',function(e){"
                 + "if(e.key!=='Enter'||e.shiftKey||e.isComposing||e.ctrlKey||e.metaKey||e.altKey)return;"
-                + "var t=e.target;if(!t||t.tagName!=='TEXTAREA')return;"
-                + "var p=t;for(var i=0;i<8&&p;i++){var b=p.querySelector&&p.querySelector('div[role=button].ds-button--iconLabelPrimary,button.ds-button--iconLabelPrimary');"
-                + "if(b){e.preventDefault();b.click();return;}p=p.parentElement;}"
+                + "var t=e.target;if(!t||t.tagName!=='TEXTAREA')return;e.preventDefault();window.__dseClickSend&&window.__dseClickSend();"
                 + "},true);"
-                // 系统分享进来的文本：等输入框出现后填入（React 受控组件用原生 setter）
+                // 系统分享文本填槽
                 + "(function(){function dseFill(t){"
                 + "var ta=document.querySelector('textarea');if(!ta)return false;"
                 + "var setter=Object.getOwnPropertyDescriptor(window.HTMLTextAreaElement.prototype,'value').set;"
@@ -103,7 +103,7 @@ public class MainActivity extends Activity {
     /** 只含早期脚本（onPageStarted 兜底用，必须是合法独立脚本） */
     private String earlyJs() { return "(function(){" + earlyInner() + "})();"; }
 
-    /** 早期脚本 + 完整增强脚本，整体包在同一个 IIFE 里（顶层 return 才合法） */
+    /** 早期脚本 + 完整增强脚本，整体包在同一个 IIFE 里 */
     private String fullBootstrapJs() {
         return "(function(){"
                 + earlyInner()
@@ -112,11 +112,18 @@ public class MainActivity extends Activity {
                 + "})();";
     }
 
-    /** 点击网页发送按钮（供输入法“发送”动作键调用） */
+    /**
+     * 点击网页发送按钮。DeepSeek 移动端工具栏从左到右为：附件/语音（iconLabelPrimary 胶囊键）
+     * 与最右侧蓝色实心圆发送键（ds-button--primary.ds-button--filled）。
+     * 绝不能点 iconLabelPrimary（旧实现误点成了上传）。
+     */
     private String clickSendJs() {
-        return "(function(){var ta=document.querySelector('textarea');if(!ta)return;"
-                + "var p=ta;for(var i=0;i<8&&p;i++){var b=p.querySelector&&p.querySelector('div[role=button].ds-button--iconLabelPrimary,button.ds-button--iconLabelPrimary');"
-                + "if(b){b.click();return;}p=p.parentElement;}})();";
+        return "(function(){window.__dseClickSend=function(){"
+                + "var ta=document.querySelector('textarea');if(!ta)return;"
+                + "var p=ta;for(var i=0;i<8&&p;i++){"
+                + "var b=p.querySelector('div[role=button].ds-button--primary.ds-button--filled,button.ds-button--primary.ds-button--filled');"
+                + "if(b){if(b.getAttribute('aria-disabled')!=='true'&&!b.classList.contains('ds-button--disabled'))b.click();return;}"
+                + "p=p.parentElement;}};window.__dseClickSend();})();";
     }
 
     private String injectJs() {
@@ -133,7 +140,7 @@ public class MainActivity extends Activity {
         return injectJs;
     }
 
-    /* WebView 子类：让输入法同时保留“换行”并多出一个“发送”动作键 */
+    /* WebView 子类：输入法同时保留“换行”并多出“发送”动作键 */
     private class DseWebView extends WebView {
         DseWebView(android.content.Context c) { super(c); }
 
@@ -141,9 +148,7 @@ public class MainActivity extends Activity {
         public InputConnection onCreateInputConnection(EditorInfo outAttrs) {
             InputConnection ic = super.onCreateInputConnection(outAttrs);
             if (ic == null) return null;
-            // 多行：回车键继续负责换行
             outAttrs.inputType |= InputType.TYPE_TEXT_FLAG_MULTI_LINE;
-            // 清掉“多行时不显示动作键”标记，再指定发送动作 → 换行键 + 发送键并存
             outAttrs.imeOptions &= ~EditorInfo.IME_FLAG_NO_ENTER_ACTION;
             outAttrs.imeOptions = (outAttrs.imeOptions & ~EditorInfo.IME_MASK_ACTION) | EditorInfo.IME_ACTION_SEND;
             outAttrs.actionLabel = "发送";
@@ -152,7 +157,7 @@ public class MainActivity extends Activity {
                 @Override
                 public boolean performEditorAction(int actionCode) {
                     if (actionCode == EditorInfo.IME_ACTION_SEND) {
-                        // InputConnection 回调运行在 IME 线程，evaluateJavascript 必须回主线程，否则崩溃
+                        // IME binder 线程，必须回主线程
                         runOnUiThread(() -> host.evaluateJavascript(clickSendJs(), null));
                         return true;
                     }
@@ -162,7 +167,6 @@ public class MainActivity extends Activity {
         }
     }
 
-    /* 分享文本桥：网页侧轮询取走一次 */
     private class ShareBridge {
         @JavascriptInterface
         public synchronized String consumeShared() {
@@ -178,18 +182,18 @@ public class MainActivity extends Activity {
         super.onCreate(savedInstanceState);
         requestWindowFeature(Window.FEATURE_NO_TITLE);
 
-        // 外部“分享 → DeepSleep”带进来的文本
         if (Intent.ACTION_SEND.equals(getIntent().getAction()) && getIntent().getType() != null
                 && getIntent().getType().startsWith("text/")) {
             sharedText = getIntent().getStringExtra(Intent.EXTRA_TEXT);
         }
 
-        WindowCompat.setDecorFitsSystemWindows(getWindow(), false);
-        // 明确要求键盘弹起时重新布局（edge-to-edge 下由我们手动把 IME 高度补成 padding）
+        // 经典全屏方案（不用 edge-to-edge decorFitsSystemWindows）：
+        // 内容靠 LAYOUT_* 标志铺到状态栏/导航栏之下，同时 adjustResize 仍能在键盘弹起时
+        // 由系统直接缩放窗口——WebView 固定底栏因此被键盘自然顶起，比手动补 IME padding 可靠。
         getWindow().setSoftInputMode(WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE);
         applyImmersive();
 
-        // 三层结构：root（明暗底色，常驻，杜绝任何白闪）→ 开屏 logo（加载完淡出）→ WebView
+        // root（明暗底色常驻）→ 开屏 logo（加载完淡出）→ WebView（同色底，不露白）
         root = new FrameLayout(this);
         root.setBackgroundColor(pageBgColor());
 
@@ -202,12 +206,9 @@ public class MainActivity extends Activity {
         web = new DseWebView(this);
         web.setBackgroundColor(pageBgColor());
         web.addJavascriptInterface(new ShareBridge(), "DSENative");
-        FrameLayout.LayoutParams lp = new FrameLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT);
-        root.addView(web, lp);
+        root.addView(web, new FrameLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
         setContentView(root);
-
-        setupInsets();
 
         WebSettings s = web.getSettings();
         s.setJavaScriptEnabled(true);
@@ -223,7 +224,6 @@ public class MainActivity extends Activity {
         s.setAllowContentAccess(true);
         s.setMixedContentMode(WebSettings.MIXED_CONTENT_COMPATIBILITY_MODE);
 
-        // document-start 级注入（在页面任何脚本之前执行），不支持时回退到 onPageStarted
         if (WebViewFeature.isFeatureSupported(WebViewFeature.DOCUMENT_START_SCRIPT)) {
             try {
                 WebViewCompat.addDocumentStartJavaScript(web, fullBootstrapJs(),
@@ -235,7 +235,7 @@ public class MainActivity extends Activity {
             @Override
             public void onPageStarted(WebView view, String url, android.graphics.Bitmap favicon) {
                 if (WebViewFeature.isFeatureSupported(WebViewFeature.DOCUMENT_START_SCRIPT)) {
-                    view.evaluateJavascript(earlyJs(), null); // 幂等兜底（主题/默认/分享）
+                    view.evaluateJavascript(earlyJs(), null);
                 } else {
                     view.evaluateJavascript(fullBootstrapJs(), null);
                 }
@@ -244,12 +244,9 @@ public class MainActivity extends Activity {
             @Override
             public void onPageFinished(WebView view, String url) {
                 clearSplash();
-                // 再尝试一次分享文本填充（应对 document-start 时输入框未就绪）
                 view.evaluateJavascript(
                         "(function(){try{var t=window.DSENative?DSENative.consumeShared():'';"
                         + "if(t&&window.__dseFillShared)window.__dseFillShared(t);}catch(e){}})();", null);
-                // 布局稳定后主动请求一次 insets，补一次键盘高度（防首帧漏派发）
-                root.requestApplyInsets();
             }
 
             @Override
@@ -311,48 +308,28 @@ public class MainActivity extends Activity {
 
     private int dp(int v) { return Math.round(v * getResources().getDisplayMetrics().density); }
 
-    /* 键盘弹起时把 IME 高度补成 WebView 底部 padding，页面（含输入框）被整体顶起。
-       edge-to-edge（decorFitsSystemWindows=false）下系统不会自动 resize，必须手动处理；
-       监听同时挂在 root 与 web 上，任一节点收到都能兜底。 */
-    private void applyImePadding(WindowInsetsCompat insets) {
-        Insets ime = insets.getInsets(WindowInsetsCompat.Type.ime());
-        Insets nav = insets.getInsets(WindowInsetsCompat.Type.navigationBars());
-        int bottom = Math.max(0, ime.bottom - nav.bottom);
-        if (web != null && web.getPaddingBottom() != bottom) web.setPadding(0, 0, 0, bottom);
-    }
-
-    private void setupInsets() {
-        ViewCompat.setOnApplyWindowInsetsListener(root, (v, insets) -> {
-            applyImePadding(insets);
-            return insets;
-        });
-        ViewCompat.setOnApplyWindowInsetsListener(web, (v, insets) -> {
-            applyImePadding(insets);
-            return insets;
-        });
-        root.post(() -> root.requestApplyInsets());
-    }
-
     private void clearSplash() {
         if (splashCleared) return;
         splashCleared = true;
-        // 只淡出 logo；root 明暗底色常驻，WebView 底色也是同色，任何时刻都不会闪白
         if (splashLogo != null) {
             splashLogo.postDelayed(() -> splashLogo.animate().alpha(0f).setDuration(260)
                     .withEndAction(() -> splashLogo.setVisibility(View.GONE)).start(), 120);
         }
     }
 
-    /* 全屏沉浸：内容铺到状态栏/导航栏/刘海之下；不使用 FLAG_FULLSCREEN（它会导致键盘不顶布局） */
+    /* 经典沉浸：透明系统栏 + 内容铺到其下；禁用 FLAG_FULLSCREEN（它会让 adjustResize 失效） */
     private void applyImmersive() {
         Window w = getWindow();
         w.addFlags(WindowManager.LayoutParams.FLAG_DRAWS_SYSTEM_BAR_BACKGROUNDS);
+        w.clearFlags(WindowManager.LayoutParams.FLAG_FULLSCREEN);
+        w.setStatusBarColor(0x00000000);
+        w.setNavigationBarColor(0x00000000);
         int flags = View.SYSTEM_UI_FLAG_LAYOUT_STABLE
                 | View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN
                 | View.SYSTEM_UI_FLAG_LAYOUT_HIDE_NAVIGATION
                 | View.SYSTEM_UI_FLAG_HIDE_NAVIGATION
                 | View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY;
-        View decor = getWindow().getDecorView();
+        View decor = w.getDecorView();
         if (!isDark()) flags |= View.SYSTEM_UI_FLAG_LIGHT_STATUS_BAR | View.SYSTEM_UI_FLAG_LIGHT_NAVIGATION_BAR;
         decor.setSystemUiVisibility(flags);
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
@@ -368,7 +345,7 @@ public class MainActivity extends Activity {
         applyImmersive();
         if (root != null) root.setBackgroundColor(pageBgColor());
         if (web != null) {
-            web.setBackgroundColor(pageBgColor()); // 重载前先换底色，杜绝深色下白闪
+            web.setBackgroundColor(pageBgColor());
             web.evaluateJavascript(earlyJs(), null);
             web.postDelayed(() -> { if (web != null) web.reload(); }, 60);
         }
@@ -377,10 +354,7 @@ public class MainActivity extends Activity {
     @Override
     public void onWindowFocusChanged(boolean hasFocus) {
         super.onWindowFocusChanged(hasFocus);
-        if (hasFocus) {
-            applyImmersive();
-            root.requestApplyInsets();
-        }
+        if (hasFocus) applyImmersive();
     }
 
     @Override
