@@ -55,7 +55,7 @@ var Panel = {
         '<div class="dse-ctx-meta"><span data-ctx-text></span><span data-ctx-pct></span></div></div>' +
         '<div class="dse-range-row"><span>上下文上限</span><input type="range" min="32000" max="1024000" step="32000" data-bind="ctxLimitTokens"><span class="dse-range-val" data-val="ctxLimitTokens"></span></div>' +
         '<div class="dse-row-desc" style="margin:-2px 0 6px">快速模式约 128K，专家模式(V3.2/V4)约 1M，按所用模型调整。</div>' +
-        '<button class="dse-btn ghost" data-act="resetCtx" style="width:100%">重新统计本会话</button>' +
+        '<button class="dse-btn ghost" data-act="resetCtx" style="width:100%">立即重新统计（拉取本会话历史）</button>' +
       '</div>' +
 
       // ============ 提示词 ============
@@ -161,7 +161,7 @@ var Panel = {
     if (act === 'uploadBg') return this.el.querySelector('[data-role="bgFile"]').click();
     if (act === 'defaultBg') { DSE.config.set('bg.url', DSE.config.defaults.bg.url); DSE.config.set('bg.upload', ''); DSE.config.set('bg.enabled', true); this.refresh(); }
     if (act === 'clearBg') { DSE.config.set('bg.enabled', false); DSE.config.set('bg.upload', ''); this.refresh(); }
-    if (act === 'resetCtx') { DSE.modules.context.reset(); this.refreshCtx(); }
+    if (act === 'resetCtx') { var selfP = this; DSE.modules.context.recompute().then(function () { selfP.refreshCtx(); }); return; }
     if (act === 'resetTpl') { DSE.modules.prompt.resetTpl(); this.refresh(); }
     if (act === 'previewPrompt') {
       var box = this.el.querySelector('[data-preview]');
