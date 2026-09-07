@@ -10,8 +10,8 @@ android {
         applicationId "com.deepsleep.app"
         minSdk 24
         targetSdk 34
-        versionCode 1
-        versionName "8.2.0"
+        versionCode 3
+        versionName "8.3.0"
     }
 
     buildTypes {
@@ -25,6 +25,12 @@ android {
         sourceCompatibility JavaVersion.VERSION_17
         targetCompatibility JavaVersion.VERSION_17
     }
+}
+
+dependencies {
+    // document-start 级 JS 注入 + 现代 WindowInsets（IME/安全区）处理
+    implementation 'androidx.webkit:webkit:1.8.0'
+    implementation 'androidx.core:core:1.10.1'
 }
 
 // 每次构建前把同源注入脚本同步进 assets（保持单一数据源）

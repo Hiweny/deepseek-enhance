@@ -4,10 +4,13 @@ import android.annotation.SuppressLint;
 import android.app.Activity;
 import android.content.Intent;
 import android.content.pm.PackageManager;
+import android.content.res.Configuration;
+import android.graphics.Color;
 import android.net.Uri;
 import android.os.Build;
 import android.os.Bundle;
 import android.view.View;
+import android.view.ViewGroup;
 import android.view.Window;
 import android.view.WindowManager;
 import android.webkit.PermissionRequest;
@@ -17,11 +20,20 @@ import android.webkit.WebResourceRequest;
 import android.webkit.WebSettings;
 import android.webkit.WebView;
 import android.webkit.WebViewClient;
+import android.widget.FrameLayout;
+
+import androidx.core.graphics.Insets;
+import androidx.core.view.ViewCompat;
+import androidx.core.view.WindowCompat;
+import androidx.core.view.WindowInsetsCompat;
+import androidx.webkit.WebViewCompat;
+import androidx.webkit.WebViewFeature;
 
 import java.io.BufferedReader;
 import java.io.InputStream;
 import java.io.InputStreamReader;
 import java.nio.charset.StandardCharsets;
+import java.util.Collections;
 
 public class MainActivity extends Activity {
 
@@ -29,20 +41,45 @@ public class MainActivity extends Activity {
     private static final int FILE_CHOOSER_CODE = 1001;
     private static final int PERM_CODE = 1002;
 
+    private FrameLayout root;
     private WebView web;
     private String injectJs;
     private ValueCallback<Uri[]> filePathCallback;
+    private boolean splashCleared = false;
 
-    // 注入：viewport 铺满安全区 + 同源增强脚本（幂等，SPA 内不重复执行）
-    private String bootstrapJs() {
+    private boolean isDark() {
+        return (getResources().getConfiguration().uiMode & Configuration.UI_MODE_NIGHT_MASK)
+                == Configuration.UI_MODE_NIGHT_YES;
+    }
+
+    /* 页面脚本之前就要跑的早期脚本：viewport 铺满安全区、主题跟随系统、Enter 发送、APK 标记 */
+    private String earlyJs() {
+        boolean dark = isDark();
         return "(function(){"
+                + "window.__DSE_WEBVIEW__=true;"
+                // viewport：必须在页面布局前生效，否则官网按错误安全区排版（顶栏错位）
                 + "try{var m=document.querySelector('meta[name=viewport]');"
-                + "if(!m){m=document.createElement('meta');m.name='viewport';document.head.appendChild(m);}"
-                + "m.content='width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover';"
+                + "if(!m){m=document.createElement('meta');m.name='viewport';(document.head||document.documentElement).appendChild(m);}"
+                + "m.content='width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover';}catch(e){}"
+                // 主题跟随系统：DeepSeek 主题键，document-start 写入，首帧即正确明暗
+                + "try{var KEY='__appKit_@deepseek/chat_themePreference';"
+                + "function dseApplyTheme(){localStorage.setItem(KEY,JSON.stringify({value:'" + (dark ? "dark" : "light") + "',__version:'0'}));}"
+                + "dseApplyTheme();"
+                + "window.addEventListener('storage',function(e){if(e.key===KEY)setTimeout(dseApplyTheme,0)});"
                 + "}catch(e){}"
-                + "if(window.__DSE_INJECTED__)return;window.__DSE_INJECTED__=true;"
-                + "\n" + injectJs() + "\n"
+                // Enter 发送（Shift+Enter / 输入法组词期间保持换行）
+                + "document.addEventListener('keydown',function(e){"
+                + "if(e.key!=='Enter'||e.shiftKey||e.isComposing||e.ctrlKey||e.metaKey||e.altKey)return;"
+                + "var t=e.target;if(!t||t.tagName!=='TEXTAREA')return;"
+                + "var p=t;for(var i=0;i<8&&p;i++){var b=p.querySelector&&p.querySelector('div[role=button].ds-button--iconLabelPrimary,button.ds-button--iconLabelPrimary');"
+                + "if(b){e.preventDefault();b.click();return;}p=p.parentElement;}"
+                + "},true);"
                 + "})();";
+    }
+
+    /* 完整增强脚本（幂等，SPA 内不重复执行） */
+    private String fullBootstrapJs() {
+        return earlyJs() + "\nif(window.__DSE_INJECTED__)return;window.__DSE_INJECTED__=true;\n" + injectJs() + "\n";
     }
 
     private String injectJs() {
@@ -64,10 +101,21 @@ public class MainActivity extends Activity {
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         requestWindowFeature(Window.FEATURE_NO_TITLE);
+
+        // 让内容自己处理系统栏 inset（配合 IME 监听把输入框顶起来）
+        WindowCompat.setDecorFitsSystemWindows(getWindow(), false);
         applyImmersive();
 
+        root = new FrameLayout(this);
+        root.setBackgroundResource(R.drawable.splash_bg); // 开屏：鲸鱼居中，底色随明暗
         web = new WebView(this);
-        setContentView(web);
+        web.setBackgroundColor(Color.TRANSPARENT);
+        FrameLayout.LayoutParams lp = new FrameLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT);
+        root.addView(web, lp);
+        setContentView(root);
+
+        setupInsets();
 
         WebSettings s = web.getSettings();
         s.setJavaScriptEnabled(true);
@@ -83,11 +131,27 @@ public class MainActivity extends Activity {
         s.setAllowContentAccess(true);
         s.setMixedContentMode(WebSettings.MIXED_CONTENT_COMPATIBILITY_MODE);
 
+        // document-start 级注入（在页面任何脚本之前执行），不支持时回退到 onPageStarted
+        if (WebViewFeature.isFeatureSupported(WebViewFeature.DOCUMENT_START_SCRIPT)) {
+            try {
+                WebViewCompat.addDocumentStartJavaScript(web, fullBootstrapJs(),
+                        Collections.singleton("*"));
+            } catch (Exception e) { /* 回退 */ }
+        }
+
         web.setWebViewClient(new WebViewClient() {
             @Override
             public void onPageStarted(WebView view, String url, android.graphics.Bitmap favicon) {
-                // 尽量贴近 document-start 注入
-                view.evaluateJavascript(bootstrapJs(), null);
+                if (!WebViewFeature.isFeatureSupported(WebViewFeature.DOCUMENT_START_SCRIPT)) {
+                    view.evaluateJavascript(fullBootstrapJs(), null);
+                } else {
+                    view.evaluateJavascript(earlyJs(), null); // 兜底再跑一次（幂等）
+                }
+            }
+
+            @Override
+            public void onPageFinished(WebView view, String url) {
+                clearSplash();
             }
 
             @Override
@@ -99,14 +163,12 @@ public class MainActivity extends Activity {
                     try { startActivity(new Intent(Intent.ACTION_VIEW, u)); } catch (Exception ignored) {}
                     return true;
                 }
-                // intent:/tel:/mailto: 等交给系统
                 try { startActivity(new Intent(Intent.ACTION_VIEW, u)); } catch (Exception ignored) {}
                 return true;
             }
         });
 
         web.setWebChromeClient(new WebChromeClient() {
-            // 支持上传图片/文件（识图模式等）
             @Override
             public boolean onShowFileChooser(WebView view, ValueCallback<Uri[]> cb, FileChooserParams params) {
                 if (filePathCallback != null) filePathCallback.onReceiveValue(null);
@@ -121,7 +183,6 @@ public class MainActivity extends Activity {
                 return true;
             }
 
-            // 网页请求摄像头/麦克风时自动授予（已在 Manifest 声明，运行时再申请）
             @Override
             public void onPermissionRequest(final PermissionRequest request) {
                 runOnUiThread(() -> {
@@ -150,7 +211,30 @@ public class MainActivity extends Activity {
         }
     }
 
-    // 全屏沉浸：内容铺到状态栏与导航栏之下，无黑线；上滑短暂呼出系统栏后自动隐藏
+    /* 键盘弹起时给 WebView 底部留出 IME 高度，页面（含输入框）被整体顶起；
+       全屏沉浸下系统不自动 resize，必须手动处理 */
+    private void setupInsets() {
+        ViewCompat.setOnApplyWindowInsetsListener(root, (v, insets) -> {
+            Insets ime = insets.getInsets(WindowInsetsCompat.Type.ime());
+            Insets nav = insets.getInsets(WindowInsetsCompat.Type.navigationBars());
+            int bottom = Math.max(0, ime.bottom - nav.bottom);
+            web.setPadding(0, 0, 0, bottom);
+            return insets;
+        });
+    }
+
+    private void clearSplash() {
+        if (splashCleared) return;
+        splashCleared = true;
+        root.postDelayed(() -> {
+            root.animate().alpha(0f).setDuration(260).withEndAction(() -> {
+                root.setBackground(null);
+                root.setAlpha(1f);
+            }).start();
+        }, 120);
+    }
+
+    /* 全屏沉浸：内容铺到状态栏/导航栏/刘海之下；不使用 FLAG_FULLSCREEN（它会导致键盘不顶布局） */
     private void applyImmersive() {
         Window w = getWindow();
         w.addFlags(WindowManager.LayoutParams.FLAG_DRAWS_SYSTEM_BAR_BACKGROUNDS);
@@ -158,13 +242,29 @@ public class MainActivity extends Activity {
                 | View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN
                 | View.SYSTEM_UI_FLAG_LAYOUT_HIDE_NAVIGATION
                 | View.SYSTEM_UI_FLAG_HIDE_NAVIGATION
-                | View.SYSTEM_UI_FLAG_FULLSCREEN
                 | View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY;
         getWindow().getDecorView().setSystemUiVisibility(flags);
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
             WindowManager.LayoutParams lp = w.getAttributes();
             lp.layoutInDisplayCutoutMode = WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_SHORT_EDGES;
             w.setAttributes(lp);
+        }
+        // 明暗模式对应状态栏图标深浅
+        View decor = getWindow().getDecorView();
+        int sys = decor.getSystemUiVisibility();
+        if (!isDark()) sys |= View.SYSTEM_UI_FLAG_LIGHT_STATUS_BAR | View.SYSTEM_UI_FLAG_LIGHT_NAVIGATION_BAR;
+        else sys &= ~(View.SYSTEM_UI_FLAG_LIGHT_STATUS_BAR | View.SYSTEM_UI_FLAG_LIGHT_NAVIGATION_BAR);
+        decor.setSystemUiVisibility(sys);
+    }
+
+    @Override
+    public void onConfigurationChanged(Configuration newConfig) {
+        super.onConfigurationChanged(newConfig);
+        applyImmersive();
+        // 系统明暗切换：先写入对应站点主题，再刷新一次让首帧即为正确明暗
+        if (web != null) {
+            web.evaluateJavascript(earlyJs(), null);
+            web.postDelayed(() -> { if (web != null) web.reload(); }, 60);
         }
     }
 
@@ -187,11 +287,6 @@ public class MainActivity extends Activity {
     }
 
     @Override
-    public void onRequestPermissionsResult(int code, String[] perms, int[] results) {
-        super.onRequestPermissionsResult(code, perms, results);
-    }
-
-    @Override
     public void onBackPressed() {
         if (web != null && web.canGoBack()) web.goBack();
         else moveTaskToBack(true);
@@ -206,9 +301,7 @@ public class MainActivity extends Activity {
     @Override
     protected void onDestroy() {
         if (web != null) {
-            if (web.getParent() instanceof android.view.ViewGroup) {
-                ((android.view.ViewGroup) web.getParent()).removeView(web);
-            }
+            if (web.getParent() instanceof ViewGroup) ((ViewGroup) web.getParent()).removeView(web);
             web.destroy();
             web = null;
         }

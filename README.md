@@ -17,9 +17,10 @@
 ### 外观
 - **全局背景**：内置默认背景图，支持填图片 URL 或上传本地图片；亮度 / 模糊可调（旧版无效的“透明度”已替换为亮度）。
 - **水玻璃气泡**：默认 / iOS 磨砂 / 水玻璃三种质感预设，普通圆角气泡（不强行加 IM 尾巴），明暗自适应；**只加样式类、不移动官网任何 DOM 节点**，因此不会闪烁、跳动，也不影响官网对超长用户消息的“展开/收起”。
-- **输入框磨砂玻璃**：悬浮毛玻璃，并修掉输入框下方的白色/黑色渐变条。
-- **顶栏统一**：标题区与分享按钮合并为同一条磨砂栏（修复移动端分享按钮单独一块底色、标题黑条的问题）。
-- **Markdown 本地美化**：标题、代码块（**保留官网原生复制/下载按钮**）、表格、引用、行内代码统一排版，避让官网原生 Mermaid 渲染。只改本地样式，**不向 AI 发送任何 Markdown 指令**。
+- **输入框磨砂玻璃**：悬浮毛玻璃，移动端与屏幕底部保持安全间距（间隙由背景透出，无黑条），并修掉输入框下方的白色/黑色渐变条。
+- **顶栏统一（两种风格可切换）**：「磨砂」把标题区与分享按钮合并为同一条磨砂栏；「背景透出」让顶栏完全透明、背景图直接透上来（按钮不受影响）。修复移动端分享按钮单独一块底色、标题黑条的问题。
+- **Markdown 本地美化**：标题、代码块（**保留官网原生复制/下载按钮**）、表格、引用、行内代码、任务列表统一排版，避让官网原生 Mermaid 渲染。只改本地样式，**不向 AI 发送任何 Markdown 指令**。
+- **LaTeX 公式渲染**：官网默认不渲染 `\( \)`、`\[ \]`、`$...$`，脚本内置**离线 KaTeX**（字体全部内联，无外部请求），流式输出结束即渲染，行间公式可横向滚动，解析失败不炸排版。
 - 可隐藏“内容由 AI 生成”标识。
 - 仅移除移动端欢迎页的“下载应用”按钮，**保留**新建对话、展开侧栏按钮。
 
@@ -36,7 +37,7 @@
 
 ### 隐私 / 防撤回
 - 参照成熟的 Anti-recall 实现：SSE 流中先缓存真实内容，撤回信号（TEMPLATE_RESPONSE / CONTENT_FILTER）到达时把撤回动作替换为本地缓存 + 提示条；历史接口加载时用本地缓存回放被撤回消息。
-- **智能模式（默认）**：连续撤回连续回填；一旦 `history_messages` 整体重载上下文，自动把服务端已重新承载的旧撤回标记为已存在（serverHas），只回填仍缺失轮，避免旧内容反复拼进 prompt；并提示 AI 极简回应、自然转题，降低再次撤回概率。
+- **智能模式（默认）**：连续撤回连续回填；旧撤回一旦随某次请求正常发出（服务端上下文已吃下）立即标记 `backfilled`，加上 `history_messages` 整体重载时的 `serverHas` 对账，双保险保证旧内容不会被反复拼进 prompt；并提示 AI 极简回应、自然转题，降低再次撤回概率。
 - 防撤回拦截/回放全局生效，与隐私模式开关无关；智能/全量只影响请求里的上下文回填。v8.2 起 XHR 响应层严格照搬最初可用实现（单一 responseText 拥有者），消除两层 getter 互相覆盖导致的失效。
 - **全量模式**：每轮携带指定条数的完整本地历史；**关闭**则不做任何请求改写。
 - 本地历史按会话隔离，可在面板清除。
@@ -55,26 +56,48 @@ src/
   modules/              背景、气泡、思考折叠、防撤回、提示词、导航、缩放、顶栏微调等
   settings/panel.js     设置面板
   main.js / footer.js   装载顺序与收尾
+vendor/katex*           KaTeX 离线运行库与内联字体 bundle（tools/build-katex.js 生成）
 build.js                一键拼接：根目录 user.js / meta.js + dist/inject.js
 dist/inject.js          无 GM 环境注入版（供 WebView 套壳使用）
+android/                DeepSleep 原生 WebView 套壳工程
+tools/                  构建辅助（KaTeX 打包）
 docs/                   官网 DOM/协议实地调研档案与架构说明
-harness/                Playwright 真机自测脚本（不随构建发布）
 ```
 
 ## 构建
 
 ```bash
-node build.js
+node tools/build-katex.js   # 仅首次/升级 KaTeX 时：把 vendor/katex 源打包成 vendor/katex.bundle.js
+node build.js               # 拼接出最终脚本
 ```
 
-产物：`deepseek-enhance.user.js`、`deepseek-enhance.meta.js`、`dist/inject.js`（三者内容同源，文件名不带版本号）。
+产物：`deepseek-enhance.user.js`、`deepseek-enhance.meta.js`、`dist/inject.js`（三者内容同源，文件名不带版本号）。KaTeX 运行库与字体以 base64 内联在 `vendor/katex.bundle.js`，离线可用。
+
+## Android 套壳（DeepSleep）
+
+`android/` 是把同源 `dist/inject.js` 装进原生 WebView 的全屏套壳工程（应用名 DeepSleep）：
+
+- **document-start 注入**：通过 androidx.webkit 的 `addDocumentStartJavaScript` 在页面任何脚本前运行（旧 WebView 回退 onPageStarted），viewport/主题首帧即正确，顶栏不错位；
+- **全屏沉浸**：透明状态栏/导航栏、shortEdges 刘海延伸、IMMERSIVE_STICKY，无黑线、无开屏广告；
+- **键盘适配**：WindowInsets 监听 IME 高度，手动撑起 WebView，输入框始终在键盘上方；WebView 内回车直接发送（Shift+回车换行）；
+- **开屏页**：居中睡鲸 logo，底色随系统明暗（values-night），首屏渲染后淡出；
+- **主题跟随系统**：document-start 按系统明暗写入 DeepSeek 主题键，系统切换后自动刷新；
+- 保留文件上传（识图）、摄像头/麦克风按需授权、网页内返回。
+
+```bash
+node build.js
+cd android && ./gradlew assembleRelease   # 产物 app/build/outputs/apk/release/app-release.apk
+```
+
+推送到 main 后 GitHub Actions（`.github/workflows/android.yml`）自动构建，Actions 页 Artifacts 可下载。
 
 ## 自测
 
 `harness/` 为 Playwright 真机自测脚本（驱动真实 DeepSeek 页面，PC 1440×900 / 移动 390×844、明暗双色）：
 - `t16-antirecall-unit.js`：伪造 SSE 撤回流 / 历史回放的确定性单测（替换、缓存、重复读取、连续撤回与重载对账、正常流不误伤）；
 - `t17-walk.js`：思考折叠卡片、AI 操作栏、齿轮位置、上下文用量、移动欢迎页按钮；
-- `t18-isolation.js`：系统提示词按会话隔离、刷新防泄露、旧对话用量、长消息折叠交互。
+- `t18-isolation.js`：系统提示词按会话隔离、刷新防泄露、旧对话用量、长消息折叠交互；
+- `t20/t20c`：实时撤回流端到端、清缓存首载历史回放；`t22`：智能回填消费逻辑；`t23`：KaTeX 真实渲染与顶栏风格切换。
 
 ## 说明
 
