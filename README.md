@@ -81,6 +81,9 @@ node build.js               # 拼接出最终脚本
 - **全屏沉浸**：透明状态栏/导航栏、shortEdges 刘海延伸、IMMERSIVE_STICKY，无黑线、无开屏广告；
 - **键盘适配**：WindowInsets 监听 IME 高度，手动撑起 WebView，输入框始终在键盘上方；覆写 `onCreateInputConnection`（多行 + `IME_ACTION_SEND`、清除 `IME_FLAG_NO_ENTER_ACTION`），输入法**同时保留「换行」键并显示独立「发送」动作键**，物理键盘 Enter 发送、Shift+Enter 换行；
 - **系统级分享联动**：Manifest 注册 `ACTION_SEND text/plain`，任意 App 选中文本 → 分享 → DeepSleep，经 `@JavascriptInterface` 桥用 React 原生 setter 填入输入框；
+- **线程安全**：输入法动作键回调在 IME binder 线程，`evaluateJavascript` 必须 `runOnUiThread` 回主线程，否则点发送即闪退；
+- **APK 专属出厂默认**（document-start 仅在配置不存在时写入，不影响油猴脚本）：顶栏背景透出、全屏按钮关、时间注入开；
+- **零白闪**：root 明暗底色常驻 + 开屏 logo 单独淡出 + WebView 同色底，加载/重载/切主题均不露白；
 - **开屏页**：居中睡鲸 logo，底色随系统明暗（values-night），首屏渲染后淡出；
 - **主题跟随系统**：document-start 按系统明暗写入 DeepSeek 主题键，系统切换后自动刷新；
 - 保留文件上传（识图）、摄像头/麦克风按需授权、网页内返回。
