@@ -63,7 +63,7 @@ var Bridge = {
 
 /* ---------- 全局命名空间 + 极简事件总线 ---------- */
 var DSE = window.DSE = {
-  version: '8.1.0',
+  version: '8.2.0',
   runtime: HAS_GM ? 'tampermonkey' : 'inject',
   bridge: Bridge,
   modules: {},
@@ -325,13 +325,14 @@ DSE.register('utils', Utils);
 /* ===== core/net.js ===== */
 /* ============================================================
  * core/net：统一网络层（只 patch 一次）
- *  - 请求体改写管线（提示词注入点：/chat/completion 等的 prompt 字段）
- *  - SSE 增量解析（消息 ID、accumulated_token_usage、撤回信号）
- *  - 历史整体加载信号（history_messages / chat_session/fetch_page）
+ *  - 请求体改写管线（系统提示词/防撤回回填的注入点：prompt 字段）
+ *  - SSE 事件解析工具 parseSSE（由防撤回层在拿到最终文本后调用）
+ *  - 历史文本工具：剥离 ⟦DSE⟧ 注入块、发出 history:loaded
+ *  注意：response/responseText 的实例改写统一由 modules/antirecall.js
+ *  按最初可用版本（v7.2）的方式拥有，本文件不再重复定义 getter，避免两层互相覆盖。
  * ============================================================ */
 var Net = {
-  _reqMutators: [],     // (bodyObj, ctx) => void
-  _respTransformers: [],// (rawText, ctx) => newText
+  _reqMutators: [],
   _patched: false,
 
   isGenUrl: function (u) {
@@ -341,15 +342,13 @@ var Net = {
     return /\/api\/v0\/(chat\/history_messages|chat_session\/fetch_page)/.test(u || '');
   },
   addRequestMutator: function (fn) { this._reqMutators.push(fn); },
-  addResponseTransformer: function (fn) { this._respTransformers.push(fn); },
 
   init: function () {
     if (this._patched) return; this._patched = true;
     var self = this;
     var origOpen = XMLHttpRequest.prototype.open;
     var origSend = XMLHttpRequest.prototype.send;
-    var desc = Object.getOwnPropertyDescriptor(XMLHttpRequest.prototype, 'responseText');
-    var origGetter = desc && desc.get;
+    var origSetHeader = XMLHttpRequest.prototype.setRequestHeader;
 
     XMLHttpRequest.prototype.open = function (method, url) {
       this._dseUrl = (url || '').split('?')[0];
@@ -357,72 +356,33 @@ var Net = {
       this._dseHeaders = {};
       return origOpen.apply(this, arguments);
     };
-    var origSetHeader = XMLHttpRequest.prototype.setRequestHeader;
     XMLHttpRequest.prototype.setRequestHeader = function (k, v) {
       try { if (this._dseHeaders) this._dseHeaders[k] = v; } catch (e) {}
       return origSetHeader.apply(this, arguments);
     };
-
     XMLHttpRequest.prototype.send = function (body) {
       var xhr = this, url = xhr._dseUrl || '';
       var isGen = self.isGenUrl(url), isHist = self.isHistoryUrl(url);
       if (!isGen && !isHist) return origSend.apply(this, arguments);
-
       var ctx = {
         url: url, isGen: isGen, isHistory: isHist,
-        sid: '', lastLen: 0, bodyObj: null, sse: { reqMid: null, respMid: null, tokens: 0, finished: false }
+        sid: '', sse: { reqMid: null, respMid: null, tokens: 0, finished: false, rawLast: 0, ev: '' }
       };
-
-      // ---- 请求体改写管线 ----
       if (typeof body === 'string' && body.charAt(0) === '{') {
         try {
           var obj = JSON.parse(body);
-          ctx.bodyObj = obj; ctx.sid = obj.chat_session_id || '';
+          ctx.sid = obj.chat_session_id || '';
           self._reqMutators.forEach(function (fn) { try { fn(obj, ctx); } catch (e) { console.error('[DSE reqMutator]', e); } });
           body = JSON.stringify(obj);
         } catch (e) {}
       }
-      if (isGen && xhr._dseHeaders) Net.lastHeaders = xhr._dseHeaders;
       DSE.emit('net:send', ctx);
-
-      // ---- 响应拦截 ----
-      if (origGetter) {
-        Object.defineProperty(xhr, 'responseText', {
-          configurable: true, enumerable: true,
-          get: function () {
-            var raw = origGetter.call(xhr);
-            if (raw == null) return raw;
-            var text = String(raw);
-            try {
-              if (isGen) text = self._handleSSE(xhr, ctx, text);
-              else if (isHist) text = self._handleHistory(xhr, ctx, text);
-            } catch (e) { console.error('[DSE resp]', e); }
-            return text;
-          }
-        });
-        var rd = Object.getOwnPropertyDescriptor(XMLHttpRequest.prototype, 'response');
-        if (rd && rd.get) {
-          var origResp = rd.get;
-          Object.defineProperty(xhr, 'response', {
-            configurable: true, enumerable: true,
-            get: function () {
-              var r = origResp.call(xhr);
-              if (typeof r === 'string') {
-                try {
-                  if (isGen) return self._handleSSE(xhr, ctx, r);
-                  if (isHist) return self._handleHistory(xhr, ctx, r);
-                } catch (e) {}
-              }
-              return r;
-            }
-          });
-        }
-      }
+      xhr._dseCtx = ctx;
       xhr.addEventListener('load', function () { DSE.emit('net:load', ctx); });
       return origSend.call(this, body);
     };
 
-    // fetch 兜底（站点当前走 XHR，这里仅处理请求改写）
+    // fetch 兜底（站点当前走 XHR；仅处理请求改写）
     var origFetch = window.fetch;
     if (origFetch) {
       window.fetch = function (input, init) {
@@ -439,63 +399,49 @@ var Net = {
     }
   },
 
-  _handleSSE: function (xhr, ctx, raw) {
-    // 同一份原文重复读取时直接返回缓存（XHR getter 会被站点多次调用）
-    if (xhr._dseRaw === raw && xhr._dseCached != null) return xhr._dseCached;
-    // 先跑外部转换器（防撤回等需要改写 SSE；转换器内部自行维护增量状态）
-    var text = raw;
-    for (var i = 0; i < this._respTransformers.length; i++) {
-      text = this._respTransformers[i](text, ctx) || text;
-    }
-    // 事件解析按【原始文本】的游标增量推进——转换器改写会改变长度，
-    // 绝不能用改写后长度做偏移，否则后续事件全部错位
+  // 由防撤回层对【最终 SSE 文本】增量解析事件（token/ready/finished）
+  parseSSE: function (text, ctx) {
+    var s = ctx.sse;
     try {
-      var rawLast = ctx.rawLast || 0;
-      var tail = raw.substring(rawLast);
-      var lines = tail.split('\n');
+      var tail = text.substring(s.rawLast), lines = tail.split('\n');
       for (var li = 0; li < lines.length; li++) {
         var ln = lines[li];
-        if (ln.indexOf('event:') === 0) ctx._lastEvent = ln.slice(6).trim();
+        if (ln.indexOf('event:') === 0) s.ev = ln.slice(6).trim();
         if (ln.indexOf('data:') !== 0) continue;
         var payload = ln.replace(/^data:\s*/, '');
         if (!payload || payload === '[DONE]') continue;
-        var data;
-        try { data = JSON.parse(payload); } catch (e) { continue; }
-        if (ctx._lastEvent === 'ready' && data.request_message_id) {
-          ctx.sse.reqMid = data.request_message_id; ctx.sse.respMid = data.response_message_id;
+        var data; try { data = JSON.parse(payload); } catch (e) { continue; }
+        if (s.ev === 'ready' && data.request_message_id) {
+          s.reqMid = data.request_message_id; s.respMid = data.response_message_id;
           DSE.emit('sse:ready', { ctx: ctx, data: data });
         }
-        // token 用量（服务端累计值）
         var used = this._pickTokens(data);
-        if (used != null) { ctx.sse.tokens = used; DSE.emit('sse:tokens', { used: used, ctx: ctx }); }
-        // 结束状态（兼容直接路径与 BATCH；只触发一次）
+        if (used != null) { s.tokens = used; DSE.emit('sse:tokens', { used: used, ctx: ctx }); }
         var finished = (data.p === 'response/status' && data.v === 'FINISHED') ||
           (data.p === 'response' && data.o === 'BATCH' && Array.isArray(data.v) &&
             data.v.some(function (x) { return x.p === 'status' && x.v === 'FINISHED'; })) ||
-          ctx._lastEvent === 'close';
-        if (finished && !ctx.sse.finished) { ctx.sse.finished = true; DSE.emit('sse:finished', { ctx: ctx }); }
-        DSE.emit('sse:data', { data: data, ctx: ctx, event: ctx._lastEvent });
+          s.ev === 'close';
+        if (finished && !s.finished) { s.finished = true; DSE.emit('sse:finished', { ctx: ctx }); }
+        DSE.emit('sse:data', { data: data, ctx: ctx, event: s.ev });
       }
-      ctx.rawLast = raw.length;
+      s.rawLast = text.length;
     } catch (e) {}
-    xhr._dseRaw = raw;
-    xhr._dseCached = text;
-    return text;
   },
 
   _pickTokens: function (data) {
     if (data.v && data.v.response && typeof data.v.response.accumulated_token_usage === 'number')
       return data.v.response.accumulated_token_usage;
     if (data.p === 'response' && data.o === 'BATCH' && Array.isArray(data.v)) {
+      var best = null;
       for (var i = 0; i < data.v.length; i++)
-        if (data.v[i].p === 'accumulated_token_usage' && typeof data.v[i].v === 'number') return data.v[i].v;
+        if (data.v[i].p === 'accumulated_token_usage' && typeof data.v[i].v === 'number') best = data.v[i].v;
+      return best;
     }
-    // 路径式 SET op
     if (data.p === 'response/accumulated_token_usage' && typeof data.v === 'number') return data.v;
     return null;
   },
 
-  // 去掉历史里服务端原样存下的注入指令块（⟦DSE⟧…⟦/DSE⟧），保证刷新后用户气泡干净
+  // 去掉历史里服务端原样存下的注入指令块（⟦DSE⟧…⟦/DSE⟧）
   _stripInjected: function (node) {
     var RE = /⟦DSE⟧[\s\S]*?⟦\/DSE⟧\n?/g;
     var walk = function (n) {
@@ -510,19 +456,13 @@ var Net = {
     return walk(node);
   },
 
-  _handleHistory: function (xhr, ctx, raw) {
+  // 历史响应：剥离注入块 + 发出 history:loaded，返回处理后的文本
+  handleHistory: function (raw, ctx) {
     var parsed = null;
     try { parsed = JSON.parse(raw); } catch (e) { return raw; }
     parsed = this._stripInjected(parsed);
-    DSE.emit('history:loaded', { json: parsed, ctx: ctx,
-      replace: function (np) { parsed = np; } });
-    // 外部转换器
-    var text = JSON.stringify(parsed);
-    for (var i = 0; i < this._respTransformers.length; i++) {
-      var r = this._respTransformers[i](text, Object.assign({}, ctx, { historyJson: parsed }));
-      if (typeof r === 'string') text = r;
-    }
-    return text;
+    DSE.emit('history:loaded', { json: parsed, ctx: ctx });
+    return JSON.stringify(parsed);
   }
 };
 DSE.net = Net;
@@ -602,55 +542,45 @@ body.dse-has-bg ._0fcaa63{background:transparent!important}
 `);
 
 /* ===== styles/bubbles.css.js ===== */
-/* styles/bubbles：气泡材质（默认 / 磨砂 / 水玻璃），不做尾巴、不改结构 */
+/* styles/bubbles：气泡材质（默认 / 磨砂 / 水玻璃）
+ * 直接命中官网稳定类名（AI 正文 / 用户气泡），不依赖 JS 逐节点补 class，
+ * 从而避免虚拟列表重挂载时“先原生样式闪一下再变成自定义样式”的闪烁/跳动。
+ * AI 气泡的视觉属性一律 !important：本站样式表后于脚本注入，同特异性下会覆盖脚本。
+ * 不做尾巴、不移动任何节点，官网长消息“展开/收起”保持可点。 */
 Bridge.addStyle(`
 /* ===== 消息行间距：AI 与下一条消息不贴在一起 ===== */
 ._4f9bf79, ._9663006{margin-bottom:14px}
 ._4f9bf79:last-child, ._9663006:last-child{margin-bottom:4px}
 
-/* ===== AI 气泡 ===== */
-.dse-ai-bubble{position:relative;border-radius:16px;padding:12px 16px;margin:0;
-  line-height:1.7;word-break:break-word;transition:background .2s, box-shadow .2s, border-color .2s}
-/* ===== 用户气泡（站点容器 .fbb737a4），只改质感，不动布局/折叠交互 ===== */
-.dse-user-bubble{position:relative;border-radius:16px!important;transition:filter .2s, background .2s}
-/* 用户长消息的官网“展开/收起”保持可点、不被遮挡 */
-.dse-user-bubble .ds-collapsible-text,
-.dse-user-bubble [class*="collapsible"]{position:relative;z-index:2}
+/* ===== 通用几何（只设一次，各预设只换质感） ===== */
+.ds-markdown.ds-assistant-message-main-content{border-radius:16px!important;padding:12px 16px!important;line-height:1.7;word-break:break-word}
+.fbb737a4{border-radius:16px!important;transition:filter .2s, background .2s}
+
+/* ===== 用户长消息折叠：展开托底必须融入气泡，不能露出官网原色小块；不抢文本点击区 ===== */
+.fbb737a4 .ds-collapsible-text-toggle-button{background:transparent!important}
+.fbb737a4 .ds-collapsible-text-toggle-button .d077096d,
+.fbb737a4 .ds-collapsible-text-toggle-button ._08f18f6{background:transparent!important;box-shadow:none!important}
+.fbb737a4 .ds-collapsible-text-toggle-button ._08f18f6{color:inherit!important;opacity:.92}
 
 /* ---------- 预设：default ---------- */
-body.dse-preset-default .dse-ai-bubble{background:#fff;color:#1d2129;border:1px solid rgba(0,0,0,.06);
-  box-shadow:0 1px 6px rgba(15,23,42,.06)}
-body.dse-preset-default.dark .dse-ai-bubble{background:rgba(40,42,50,.92);color:#e7e9ee;border-color:rgba(255,255,255,.08)}
-body.dse-preset-default .dse-user-bubble{background:#e8eefc!important;color:#1d2129!important}
-body.dse-preset-default.dark .dse-user-bubble{background:rgba(59,108,246,.32)!important;color:#eef2ff!important}
+body.dse-preset-default .ds-markdown.ds-assistant-message-main-content{background:#fff!important;color:#1d2129!important;border:1px solid rgba(0,0,0,.06)!important;box-shadow:0 1px 6px rgba(15,23,42,.06)!important}
+body.dse-preset-default.dark .ds-markdown.ds-assistant-message-main-content{background:rgba(40,42,50,.92)!important;color:#e7e9ee!important;border-color:rgba(255,255,255,.08)!important}
+body.dse-preset-default .fbb737a4{background:#e8eefc!important;color:#1d2129!important}
+body.dse-preset-default.dark .fbb737a4{background:rgba(59,108,246,.32)!important;color:#eef2ff!important}
 
 /* ---------- 预设：frosted（iOS 磨砂） ---------- */
-body.dse-preset-frosted .dse-ai-bubble{background:rgba(255,255,255,.86);color:#1d2129;
-  border:1px solid rgba(255,255,255,.65);backdrop-filter:blur(22px) saturate(180%);-webkit-backdrop-filter:blur(22px) saturate(180%);
-  box-shadow:0 6px 24px rgba(15,23,42,.08), inset 0 1px 0 rgba(255,255,255,.6)}
-body.dse-preset-frosted.dark .dse-ai-bubble{background:rgba(40,42,50,.55);color:#e7e9ee;border-color:rgba(255,255,255,.12);
-  box-shadow:0 6px 24px rgba(0,0,0,.35), inset 0 1px 0 rgba(255,255,255,.10)}
-body.dse-preset-frosted .dse-user-bubble{background:rgba(59,108,246,.72)!important;color:#fff!important;
-  backdrop-filter:blur(22px) saturate(180%);-webkit-backdrop-filter:blur(22px) saturate(180%)}
-body.dse-preset-frosted.dark .dse-user-bubble{background:rgba(59,108,246,.6)!important}
+body.dse-preset-frosted .ds-markdown.ds-assistant-message-main-content{background:rgba(255,255,255,.86)!important;color:#1d2129!important;border:1px solid rgba(255,255,255,.65)!important;backdrop-filter:blur(22px) saturate(180%);-webkit-backdrop-filter:blur(22px) saturate(180%);box-shadow:0 6px 24px rgba(15,23,42,.08),inset 0 1px 0 rgba(255,255,255,.6)!important}
+body.dse-preset-frosted.dark .ds-markdown.ds-assistant-message-main-content{background:rgba(40,42,50,.55)!important;color:#e7e9ee!important;border-color:rgba(255,255,255,.12)!important;box-shadow:0 6px 24px rgba(0,0,0,.35),inset 0 1px 0 rgba(255,255,255,.10)!important}
+body.dse-preset-frosted .fbb737a4{background:rgba(59,108,246,.72)!important;color:#fff!important;backdrop-filter:blur(22px) saturate(180%);-webkit-backdrop-filter:blur(22px) saturate(180%)}
+body.dse-preset-frosted.dark .fbb737a4{background:rgba(59,108,246,.6)!important}
 
-/* ---------- 预设：water（水玻璃：高光+折射感） ---------- */
-body.dse-preset-water .dse-ai-bubble{color:#1d2129;border:1px solid rgba(255,255,255,.6);
-  background:linear-gradient(135deg,rgba(255,255,255,.9),rgba(255,255,255,.74));
-  backdrop-filter:blur(18px) saturate(165%) brightness(1.03);-webkit-backdrop-filter:blur(18px) saturate(165%) brightness(1.03);
-  box-shadow:0 4px 20px rgba(15,23,42,.08), inset 0 1px 0 rgba(255,255,255,.75), inset 0 -1px 0 rgba(15,23,42,.03)}
-body.dse-preset-water .dse-ai-bubble::before{content:"";position:absolute;inset:0;border-radius:inherit;pointer-events:none;z-index:1;
-  background:linear-gradient(160deg,rgba(255,255,255,.3),rgba(255,255,255,0) 42%)}
-body.dse-preset-water .dse-ai-bubble > *{position:relative;z-index:2}
-body.dse-preset-water.dark .dse-ai-bubble{color:#e7e9ee;border-color:rgba(255,255,255,.12);
-  background:linear-gradient(135deg,rgba(48,51,62,.86),rgba(34,36,44,.72));
-  backdrop-filter:blur(18px) saturate(165%);-webkit-backdrop-filter:blur(18px) saturate(165%);
-  box-shadow:0 4px 20px rgba(0,0,0,.4), inset 0 1px 0 rgba(255,255,255,.08)}
-body.dse-preset-water .dse-user-bubble{color:#fff!important;
-  background:linear-gradient(135deg,rgba(59,108,246,.66),rgba(92,132,255,.5))!important;
-  backdrop-filter:blur(14px) saturate(165%);-webkit-backdrop-filter:blur(14px) saturate(165%);
-  box-shadow:0 4px 16px rgba(59,108,246,.22), inset 0 1px 0 rgba(255,255,255,.28)}
-body.dse-preset-water.dark .dse-user-bubble{background:linear-gradient(135deg,rgba(59,108,246,.55),rgba(80,110,220,.42))!important}
+/* ---------- 预设：water（水玻璃） ---------- */
+body.dse-preset-water .ds-markdown.ds-assistant-message-main-content{position:relative;color:#1d2129!important;border:1px solid rgba(255,255,255,.6)!important;background:linear-gradient(135deg,rgba(255,255,255,.9),rgba(255,255,255,.74))!important;backdrop-filter:blur(18px) saturate(165%) brightness(1.03);-webkit-backdrop-filter:blur(18px) saturate(165%) brightness(1.03);box-shadow:0 4px 20px rgba(15,23,42,.08),inset 0 1px 0 rgba(255,255,255,.75)!important}
+body.dse-preset-water .ds-markdown.ds-assistant-message-main-content::before{content:"";position:absolute;inset:0;border-radius:inherit;pointer-events:none;z-index:1;background:linear-gradient(160deg,rgba(255,255,255,.3),rgba(255,255,255,0) 42%)}
+body.dse-preset-water .ds-markdown.ds-assistant-message-main-content > *{position:relative;z-index:2}
+body.dse-preset-water.dark .ds-markdown.ds-assistant-message-main-content{color:#e7e9ee!important;border-color:rgba(255,255,255,.12)!important;background:linear-gradient(135deg,rgba(48,51,62,.86),rgba(34,36,44,.72))!important;backdrop-filter:blur(18px) saturate(165%);-webkit-backdrop-filter:blur(18px) saturate(165%);box-shadow:0 4px 20px rgba(0,0,0,.4),inset 0 1px 0 rgba(255,255,255,.08)!important}
+body.dse-preset-water .fbb737a4{color:#fff!important;background:linear-gradient(135deg,rgba(59,108,246,.66),rgba(92,132,255,.5))!important;backdrop-filter:blur(14px) saturate(165%);-webkit-backdrop-filter:blur(14px) saturate(165%);box-shadow:0 4px 16px rgba(59,108,246,.22),inset 0 1px 0 rgba(255,255,255,.28)}
+body.dse-preset-water.dark .fbb737a4{background:linear-gradient(135deg,rgba(59,108,246,.55),rgba(80,110,220,.42))!important}
 `);
 
 /* ===== styles/markdown.css.js ===== */
@@ -872,11 +802,11 @@ DSE.modules.background = Background;
 
 /* ===== modules/antirecall.js ===== */
 /* ============================================================
- * modules/antiRecall：防撤回 + 本地历史（智能/全量模式的数据底座）
- *  - SSE 撤回信号（TEMPLATE_RESPONSE / CONTENT_FILTER）到达前缓存真实内容
- *  - 历史接口（history_messages / fetch_page）用缓存补回被撤回消息
- *  - 智能模式修复：连续撤回连续回填；一旦服务端整体重载上下文，
- *    清除服务端已包含的旧撤回，只回填仍缺失的最新轮次
+ * modules/antiRecall：防撤回（XHR 响应层照搬最初可用版本 v7.2 的成熟实现）
+ *  - 全局生效：无论隐私模式开关如何，SSE 撤回替换 / 历史回放都工作
+ *  - 智能 / 全量模式【只做回填】：把本地缓存的撤回轮次拼进下一次请求 prompt
+ *  - 智能模式小瑕疵修复：history_messages 整体加载后，若服务端已重新承载
+ *    某条撤回内容，则把它标记为 serverHas，不再重复回填（只回填仍缺失的）
  * ============================================================ */
 var AntiRecall = {
   TEMPLATE_RESPONSE: 'TEMPLATE_RESPONSE',
@@ -884,32 +814,39 @@ var AntiRecall = {
   RECALL_TIP: '⚠️ 此回复已被撤回，以下为本地缓存内容',
   RECALL_NOT_FOUND: '⛔ 此回复已被撤回，本地缓存中未找到',
 
-  /* ---------- localStorage 原始片段缓存 ---------- */
-  rawKey: function (sid, mid) { return 'dse_recall_' + (sid || '') + '_' + (mid || ''); },
+  /* ---------- localStorage 原始片段缓存（与 v7.2 同键，老缓存可直接复用） ---------- */
+  rawKey: function (sid, mid) { return 'ds_recall_' + (sid || '') + '_' + (mid || ''); },
   saveRaw: function (sid, mid, frags) { try { localStorage.setItem(this.rawKey(sid, mid), JSON.stringify(frags)); } catch (e) {} },
   loadRaw: function (sid, mid) {
     try {
       var raw = localStorage.getItem(this.rawKey(sid, mid));
-      if (raw) { var f = JSON.parse(raw); f.push({ id: f.length + 1, type: 'TIP', style: 'WARNING', content: this.RECALL_TIP }); return f; }
+      if (raw) {
+        var frags = JSON.parse(raw);
+        // 历史渲染器只渲染既有 RESPONSE 片段，提示直接并入最后一个 RESPONSE 片段，保证可见
+        for (var fi = frags.length - 1; fi >= 0; fi--) {
+          if (frags[fi].type === 'RESPONSE') { frags[fi].content += '\n\n' + this.RECALL_TIP; break; }
+        }
+        return frags;
+      }
     } catch (e) {}
     return [{ content: this.RECALL_NOT_FOUND, id: 2, type: this.TEMPLATE_RESPONSE }];
   },
 
-  /* ---------- 会话级高层历史 ---------- */
+  /* ---------- 会话级高层历史（智能/全量回填的数据底座，按 sid 严格隔离） ---------- */
   getHistory: function (sid) { return DSE.config.session(sid).hist || []; },
   pushHistory: function (sid, item) {
+    if (!sid) return;
     var s = DSE.config.session(sid);
     if (!s.hist) s.hist = [];
     s.hist.push(item);
-    if (s.hist.length > 400) s.hist = s.hist.slice(-400); // 防爆
+    if (s.hist.length > 400) s.hist = s.hist.slice(-400);
     DSE.config.saveSessions();
   },
   clearHistory: function (sid) {
     if (sid) { DSE.config.setSession(sid, { hist: [] }); }
     else { var all = DSE.config.sessions(); Object.keys(all).forEach(function (k) { all[k].hist = []; }); DSE.config.saveSessions(); }
   },
-
-  // 智能模式：计算当前仍需回填的撤回轮次（服务端上下文里没有的）
+  // 智能模式：仍需回填的撤回轮次（服务端上下文里没有的）
   pendingRecalledRounds: function (sid) {
     if (DSE.config.get('privacyMode') !== 'smart') return [];
     var h = this.getHistory(sid), rounds = [];
@@ -923,8 +860,15 @@ var AntiRecall = {
     return rounds;
   },
 
-  /* ---------- SSE op 树状态机（移植自旧版成熟实现） ---------- */
-  setByPath: function (obj, path, val, append) {
+  extractResponseContent: function (fragments) {
+    if (!fragments || !Array.isArray(fragments)) return '';
+    var c = '';
+    for (var i = 0; i < fragments.length; i++) if (fragments[i].type === 'RESPONSE' && fragments[i].content) c += fragments[i].content;
+    return c;
+  },
+
+  /* ================= SSE op 树状态机（照搬 v7.2） ================= */
+  _setValueByPath: function (obj, path, value, isAppend) {
     var keys = path.split('/'), cur = obj;
     var parseK = function (k, c) { return (/^[-+]?\d+$/.test(k)) ? (parseInt(k) < 0 ? c.length + parseInt(k) : parseInt(k)) : k; };
     for (var i = 0; i < keys.length - 1; i++) {
@@ -933,154 +877,215 @@ var AntiRecall = {
       cur = cur[k];
     }
     var lk = parseK(keys[keys.length - 1], cur);
-    if (append) { if (Array.isArray(cur[lk])) cur[lk] = cur[lk].concat(val); else cur[lk] = (cur[lk] || '') + val; }
-    else cur[lk] = val;
+    if (isAppend) { if (Array.isArray(cur[lk])) cur[lk] = cur[lk].concat(value); else cur[lk] = (cur[lk] || '') + value; }
+    else cur[lk] = value;
+    return obj;
   },
   makeState: function (sid) {
-    return {
-      fields: {}, sid: sid, recalled: false, recalledContent: '',
-      preCheck: function (data, AR) {
-        var path = data.p, mode = data.o, modified = false;
+    var AR = this;
+    var st = {
+      fields: {}, sessId: sid || '', recalled: false, recalledContent: '',
+      _updatePath: '', _updateMode: 'SET', _lastLen: 0, _cached: '',
+      // preCheck 必须在 setField 之前执行：此时 fields.response.fragments 还是真实内容
+      preCheck: function (data) {
+        var path = data.p ? data.p : this._updatePath;
+        var mode = data.o ? data.o : this._updateMode;
+        var modified = false;
         if (mode === 'BATCH' && path === 'response') {
           for (var i = 0; i < data.v.length; i++) {
             var v = data.v[i];
-            if (v.p === 'fragments' && v.v && v.v[0] && v.v[0].type === AR.TEMPLATE_RESPONSE) {
+            if (v.p === 'fragments' && v.v && v.v.length > 0 && v.v[0].type === AR.TEMPLATE_RESPONSE) {
               modified = true;
-              AR.saveRaw(this.sid, this.fields.response && this.fields.response.message_id, this.fields.response.fragments);
-              var real = '';
-              (this.fields.response.fragments || []).forEach(function (f) { if (f.type === 'RESPONSE') real += f.content || ''; });
-              this.recalledContent = real; this.recalled = true;
+              try { AR.saveRaw(this.sessId, this.fields.response.message_id, this.fields.response.fragments); } catch (e) {}
+              this.recalledContent = AR.extractResponseContent(this.fields.response.fragments);
+              this.recalled = true;
               data.v[i] = { v: [{ id: 1, type: 'TIP', style: 'WARNING', content: AR.RECALL_TIP }], p: 'fragments', o: 'APPEND' };
             }
             if (v.p === 'status' && v.v === AR.CONTENT_FILTER) {
-              modified = true; this.recalled = true; data.v[i] = { p: 'status', v: 'FINISHED' };
+              modified = true; this.recalled = true;
+              data.v[i] = { p: 'status', v: 'FINISHED' };
             }
           }
         }
         return modified ? JSON.stringify(data) : '';
       },
-      update: function (data, AR) {
-        var repl = this.preCheck(data, AR);
-        // BATCH：v 是一组子 op，子 op 的 p 相对当前节点路径递归展开（官网现行协议）
-        if (data.o === 'BATCH' && Array.isArray(data.v)) {
-          var base = data.p ? String(data.p).replace(/\/$/, '') + '/' : '';
-          var savedP = this._p, savedO = this._o;
-          for (var bi = 0; bi < data.v.length; bi++) {
-            var sub = data.v[bi];
-            this.update({ p: base + (sub.p || ''), o: sub.o, v: sub.v }, AR);
+      setField: function (path, value, mode) {
+        if (mode === 'BATCH') {
+          for (var i = 0; i < value.length; i++) {
+            var v = value[i];
+            this.setField(path + '/' + v.p, v.v, v.o || 'SET');
           }
-          this._p = savedP; this._o = savedO;
-          return repl;
+        } else if (mode === 'SET') AR._setValueByPath(this.fields, path, value, false);
+        else if (mode === 'APPEND') AR._setValueByPath(this.fields, path, value, true);
+      },
+      update: function (data) {
+        var pre = this.preCheck(data);
+        if (data.p) this._updatePath = data.p;
+        if (data.o) this._updateMode = data.o;
+        var value = data.v;
+        if (typeof value === 'object' && this._updatePath === '') {
+          for (var key in value) if (Object.prototype.hasOwnProperty.call(value, key)) this.fields[key] = value[key];
+          return pre;
         }
-        if (data.p) this._p = data.p;
-        if (data.o) this._o = data.o;
-        var val = data.v;
-        if (typeof val === 'object' && !this._p) { for (var k in val) this.fields[k] = val[k]; }
-        else AR.setByPath(this.fields, this._p, val, this._o === 'APPEND');
-        return repl;
+        this.setField(this._updatePath, value, this._updateMode);
+        return pre;
       },
       content: function () {
         if (this.recalled && this.recalledContent) return this.recalledContent;
-        var out = '';
-        ((this.fields.response && this.fields.response.fragments) || []).forEach(function (f) {
-          if (f.type === 'RESPONSE') out += f.content || '';
-        });
-        return out;
+        return AR.extractResponseContent((this.fields.response && this.fields.response.fragments) || []);
       }
     };
+    return st;
   },
 
-  // 采用 FrankyT 成熟范式：持久化“行数组 + 已处理行数游标”。
-  // 改写过的行一直保留在行数组里，因此任意时刻重复读取都能重建出完整改写文本；
-  // 游标按【原始文本行数】推进，不受改写后长度变化影响。
-  transformSSE: function (raw, ctx) {
-    if (!ctx._arState) { ctx._arState = this.makeState(ctx.sid); ctx._arLines = null; ctx._arCount = 0; }
-    var st = ctx._arState;
-    var lines = raw.split('\n');
-    if (!ctx._arLines) ctx._arLines = lines;
-    else {
-      // 与上次相比新增的行追加到持久行数组（旧行可能已被改写，必须保留）
-      for (var a = ctx._arCount; a < lines.length; a++) ctx._arLines[a] = lines[a];
-    }
-    var anyReplaced = false;
-    // 只处理新增行（最后一段常为空串，与参考实现一致处理到 length-1）
-    for (var i = ctx._arCount; i < ctx._arLines.length - 1; i++) {
-      var ln = ctx._arLines[i];
-      if (!ln || ln.indexOf('data:') !== 0) continue;
+  // 照搬 v7.2 processSSEStream：按长度游标处理新增行，撤回则重组并推进游标
+  processSSEStream: function (rawText, state) {
+    var lastLen = state._lastLen || 0;
+    if (!rawText || rawText.length <= lastLen) return { text: state._cached || rawText, changed: false };
+    var newPart = rawText.substring(lastLen), lines = newPart.split('\n'), modified = false;
+    for (var i = 0; i < lines.length; i++) {
+      var line = lines[i];
+      if (!line || line.indexOf('data:') !== 0) continue;
       try {
-        var data = JSON.parse(ln.replace(/^data:\s*/, ''));
-        if (data.v) {
-          var repl = st.update(data, this);
-          if (repl) { ctx._arLines[i] = 'data: ' + repl; anyReplaced = true; }
-        }
+        var data = JSON.parse(line.replace(/^data:\s*/, ''));
+        if (data.v) { var repl = state.update(data); if (repl) { lines[i] = 'data: ' + repl; modified = true; } }
       } catch (e) {}
     }
-    ctx._arCount = ctx._arLines.length - 1;
-    // 只要本轮发生过撤回（st.recalled），每次都用持久行数组重建，保证重复读取仍是改写版
-    if (st.recalled || anyReplaced) return ctx._arLines.join('\n');
-    return raw;
-  },
-  commitTurn: function (ctx) {
-    var st = ctx._arState; if (!st) return;
-    var content = st.content();
-    if (content) this.pushHistory(ctx.sid, { role: 'assistant', content: content, ts: Date.now(), recalled: st.recalled });
-    if (st.recalled && DSE.config.get('privacyMode') === 'smart') Utils.toast('已拦截一次撤回，内容已本地保留');
+    var newText = modified ? rawText.substring(0, lastLen) + lines.join('\n') : rawText;
+    state._lastLen = newText.length;
+    if (modified) state._cached = newText;
+    return { text: newText, changed: modified };
   },
 
-  transformHistory: function (raw, ctx) {
+  // 历史回放：status=CONTENT_FILTER 的消息用本地缓存替换（照搬 v7.2）+ 智能对账
+  processHistoryJSON: function (rawText, sid) {
     var AR = this;
     try {
-      var j = JSON.parse(raw), biz = j.data && j.data.biz_data;
-      if (!biz) return raw;
-      var sid = (biz.chat_session && biz.chat_session.id) || ctx.sid;
-      var msgs = biz.chat_messages || biz.messages || [];
-      var changed = false;
-      // 服务端现存消息文本集合，用于判定本地撤回是否已被服务端重新加载
+      var json = JSON.parse(rawText);
+      if (!json.data || !json.data.biz_data) return rawText;
+      var data = json.data.biz_data;
+      var sessId = (data.chat_session && data.chat_session.id) || sid || '';
+      if (!data.chat_messages) return rawText;
+      var modified = false;
       var serverTexts = {};
-      msgs.forEach(function (m) {
-        var t = '';
-        (m.fragments || []).forEach(function (f) { t += f.content || ''; });
+      for (var i = 0; i < data.chat_messages.length; i++) {
+        var msg = data.chat_messages[i];
+        var t = AR.extractResponseContent(msg.fragments);
         if (t) serverTexts[t.slice(0, 60)] = true;
-        if (m.status === AR.CONTENT_FILTER) {
-          m.fragments = AR.loadRaw(sid, m.message_id); m.status = 'FINISHED'; changed = true;
-        }
-      });
-      // 关键修复：上下文整体加载后，把服务端已有的旧撤回标记为 serverHas，不再回填
-      var hist = this.getHistory(sid);
-      hist.forEach(function (h) {
-        if (h.recalled && !h.serverHas && h.content && serverTexts[h.content.slice(0, 60)]) { h.serverHas = true; changed = true; }
-      });
-      // fetch_page = 服务端整体重载了上下文：只保留“最新一轮”仍待回填，
-      // 更早的撤回轮一律视为服务端已承载，避免旧撤回被反复拼进 prompt
-      if (/fetch_page/.test(ctx.url || '')) {
-        var pendingIdx = [];
-        hist.forEach(function (h, i) { if (h.role === 'assistant' && h.recalled && !h.serverHas) pendingIdx.push(i); });
-        if (pendingIdx.length > 1) {
-          for (var k = 0; k < pendingIdx.length - 1; k++) { hist[pendingIdx[k]].serverHas = true; changed = true; }
+        if (msg.status === AR.CONTENT_FILTER) {
+          msg.fragments = AR.loadRaw(sessId, msg.message_id);
+          msg.status = 'FINISHED'; modified = true;
         }
       }
-      if (changed) { DSE.config.saveSessions(); return JSON.stringify(j); }
+      // 智能模式对账：服务端整体加载后，已重新承载的旧撤回不再回填
+      var hist = AR.getHistory(sessId);
+      hist.forEach(function (h) {
+        if (h.recalled && !h.serverHas && h.content && serverTexts[h.content.slice(0, 60)]) {
+          h.serverHas = true; modified = true;
+        }
+      });
+      if (modified) { DSE.config.saveSessions(); json.data.biz_data = data; return JSON.stringify(json); }
     } catch (e) {}
-    return raw;
+    return rawText;
+  },
+
+  /* ================= XHR 挂载层（照搬 v7.2 结构，链式包在 net 之外） ================= */
+  _installed: false,
+  installXhr: function () {
+    if (this._installed) return; this._installed = true;
+    var AR = this;
+    var proto = XMLHttpRequest.prototype;
+    var _origOpen = proto.open, _origSend = proto.send;
+    var textDesc = Object.getOwnPropertyDescriptor(proto, 'responseText');
+    var respDesc = Object.getOwnPropertyDescriptor(proto, 'response');
+    var _origTextGetter = textDesc && textDesc.get;
+    var _origRespGetter = respDesc && respDesc.get;
+
+    proto.open = function (method, url) {
+      this._arUrl = (url || '').split('?')[0];
+      return _origOpen.apply(this, arguments);
+    };
+
+    proto.send = function (body) {
+      var xhr = this, url = xhr._arUrl || '';
+      var isGen = /\/api\/v0\/chat\/(completion|regenerate|edit_message|continue|resume_stream)/.test(url);
+      var isHist = /\/api\/v0\/chat\/history_messages/.test(url);
+      if (!isGen && !isHist) return _origSend.apply(this, arguments);
+
+      // 生成请求：先取会话 id（body 之后会被 net 的请求管线改写，这里读原始值）
+      var sid = '';
+      if (isGen && typeof body === 'string') {
+        try { sid = (JSON.parse(body).chat_session_id) || ''; } catch (e) {}
+      }
+      var state = isGen ? AR.makeState(sid) : null;
+
+      if (_origTextGetter) {
+        try {
+          Object.defineProperty(xhr, 'responseText', {
+            configurable: true, enumerable: true,
+            get: function () {
+              var raw = _origTextGetter.call(xhr);
+              if (raw == null) return raw;
+              if (isGen && state) {
+                var r = AR.processSSEStream(String(raw), state);
+                var ctx = xhr._dseCtx;           // net 在其 send 中挂上
+                if (ctx) DSE.net.parseSSE(r.text, ctx);
+                return r.text;
+              }
+              if (isHist) {
+                var t = DSE.net.handleHistory(raw, xhr._dseCtx || { url: url, isHistory: true });
+                return AR.processHistoryJSON(t, sid);
+              }
+              return raw;
+            }
+          });
+        } catch (e) {}
+      }
+      if (_origRespGetter) {
+        try {
+          Object.defineProperty(xhr, 'response', {
+            configurable: true, enumerable: true,
+            get: function () {
+              var raw = _origRespGetter.call(xhr);
+              if (typeof raw !== 'string') return raw;
+              if (isGen && state) return AR.processSSEStream(String(raw), state).text;
+              if (isHist) {
+                var t = DSE.net.handleHistory(raw, xhr._dseCtx || { url: url, isHistory: true });
+                return AR.processHistoryJSON(t, sid);
+              }
+              return raw;
+            }
+          });
+        } catch (e) {}
+      }
+
+      // 流结束落库本轮 AI 回复（撤回时用 preCheck 保存的真实内容）
+      if (isGen) {
+        xhr.addEventListener('load', function () {
+          try {
+            var content = state.content();
+            if (content) {
+              AR.pushHistory(sid, { role: 'assistant', content: content, ts: Date.now(), recalled: state.recalled });
+              if (state.recalled && DSE.config.get('privacyMode') === 'smart') {
+                setTimeout(function () { Utils.toast('已拦截一次撤回，真实内容已本地保留'); }, 400);
+              }
+            }
+          } catch (e) {}
+        });
+      }
+      return _origSend.apply(this, arguments);
+    };
   },
 
   init: function () {
     var AR = this;
-    // 记录用户发送（原始输入，不含装饰）——在 prompt 模块之前注册
+    this.installXhr();
+    // 记录用户原始输入（在 prompt 模块之前注册，拿到的是未注入文本）
     DSE.net.addRequestMutator(function (obj, ctx) {
       if (obj && typeof obj.prompt === 'string' && /\/chat\/completion$/.test(ctx.url)) {
-        var sid = obj.chat_session_id || '';
-        AR.pushHistory(sid, { role: 'user', content: obj.prompt, ts: Date.now(), recalled: false });
+        AR.pushHistory(obj.chat_session_id || '', { role: 'user', content: obj.prompt, ts: Date.now(), recalled: false });
       }
     });
-    // 响应转换
-    DSE.net.addResponseTransformer(function (raw, ctx) {
-      if (ctx.isGen) return AR.transformSSE(raw, ctx);
-      if (ctx.isHistory) return AR.transformHistory(raw, ctx);
-      return raw;
-    });
-    // 流结束时落库本轮 AI 回复
-    DSE.on('sse:finished', function (p) { AR.commitTurn(p.ctx); });
   }
 };
 DSE.modules.antiRecall = AntiRecall;
@@ -1224,56 +1229,18 @@ var Think = {
 DSE.modules.think = Think;
 
 /* ===== modules/bubbles.js ===== */
-/* ============================================================
- * modules/bubbles：气泡材质（只加 class，绝不移动/重建官网节点）
- *  - 不做任何 DOM 结构改动，从根上避免闪烁、位置跳动、破坏官网折叠交互
- *  - AI 正文 .ds-markdown 加 dse-ai-bubble；用户气泡容器加 dse-user-bubble
- *  - 用户长消息的官网“展开/收起”（.ds-collapsible-text）保持原生可用
- * ============================================================ */
+/* modules/bubbles：气泡材质开关。
+ * 样式直接命中官网稳定类名（见 styles/bubbles.css.js），无需逐节点补 class，
+ * 因此这里只负责在 body 上切换预设 class，彻底消除补 class 慢一帧导致的闪烁。 */
 var Bubbles = {
-  rafQ: false,
   applyPreset: function () {
     var p = DSE.config.get('bubblePreset') || 'water';
     document.body.classList.remove('dse-preset-default', 'dse-preset-frosted', 'dse-preset-water');
     document.body.classList.add('dse-preset-' + p);
   },
-  scan: function () {
-    if (!document.body) return;
-    this.applyPreset();
-    // AI 气泡
-    var ai = document.querySelectorAll(SEL.aiMarkdown);
-    for (var i = 0; i < ai.length; i++) {
-      var n = ai[i];
-      if (n.closest('.ds-think-content')) continue;
-      n.classList.add('dse-ai-bubble');
-    }
-    // 用户气泡（仅加 class，不触碰内部结构，保证折叠按钮可点）
-    var us = document.querySelectorAll(SEL.userBubble);
-    for (var j = 0; j < us.length; j++) {
-      var u = us[j];
-      if (u.closest('textarea') || u.closest('[contenteditable="true"]')) continue;
-      u.classList.add('dse-user-bubble');
-    }
-  },
-  requestScan: function () {
-    if (this.rafQ) return; this.rafQ = true;
-    var self = this;
-    requestAnimationFrame(function () { self.rafQ = false; self.scan(); });
-  },
   init: function () {
-    var self = this;
-    Utils.onReady(function () {
-      self.scan();
-      new MutationObserver(function (muts) {
-        // 仅在确实有新增节点/文本变化时调度，且只加 class，开销极小
-        for (var i = 0; i < muts.length; i++) {
-          if (muts[i].addedNodes.length || muts[i].type === 'characterData') { self.requestScan(); break; }
-        }
-      }).observe(document.body, { childList: true, subtree: true, characterData: true });
-    });
-    DSE.on('cfg:change', function (e) {
-      if (e.path === 'bubblePreset') self.requestScan();
-    });
+    this.applyPreset();
+    DSE.on('cfg:change', function (e) { if (e.path === 'bubblePreset') Bubbles.applyPreset(); });
   }
 };
 DSE.modules.bubbles = Bubbles;
@@ -1340,17 +1307,18 @@ DSE.modules.tweaks = Tweaks;
 
 /* ===== modules/context.js ===== */
 /* ============================================================
- * modules/context：会话上下文用量（只供设置面板展示，不在对话界面插 UI）
+ * modules/context：会话上下文用量（只在设置面板展示，对话界面零侵入）
  *
- * 数据口径（关键）：
- *  - SSE 的 accumulated_token_usage 是【服务端本轮请求的累计上下文 token】，
- *    本身就是“当前对话总共占用”，直接取最大值即可，禁止逐轮累加（会翻倍）。
- *  - 脚本注入前就已存在的历史对话：从 history/fetch_page 响应文本估算，
- *    与服务端值取 max，因此刚打开旧对话也能看到用量。
- *  - 全部按会话 id 隔离存储，切换会话互不影响。
+ * 用量口径（2026-09-07 抓包实测）：
+ *  - history_messages 的每条 chat_message 自带 accumulated_token_usage，
+ *    它是【该消息生成时整段上下文的累计 token】，取最大值 = 当前会话总占用，
+ *    因此脚本注入前就存在的旧对话也能精确算出，无需文本估算。
+ *  - 实时对话 SSE 的 accumulated_token_usage 同理，取会话级最大值，不累加。
+ *  - 文本估算仅在接口无该字段时兜底。
+ *  - 全部按会话 id 隔离。
  * ============================================================ */
 var Context = {
-  sid: '', live: 0,
+  sid: '', live: 0, busy: false,
 
   loadSid: function (sid) {
     if (!sid || sid === this.sid) return;
@@ -1364,33 +1332,33 @@ var Context = {
     if (v > this.live) {
       this.live = v;
       var s = DSE.config.session(sid);
-      s.serverTokens = v;
-      // 服务端值是权威口径，同时校正估算值
-      if ((s.usedTokensEst || 0) < v) s.usedTokensEst = v;
+      s.serverTokens = Math.max(s.serverTokens || 0, v);
       DSE.config.saveSessions();
       this.emit();
     }
   },
+  // 从历史响应里取权威用量（每条消息的 accumulated_token_usage 最大值）
   onHistory: function (payload) {
     try {
       var biz = payload.json && payload.json.data && payload.json.data.biz_data;
-      var msgs = biz && (biz.chat_messages || biz.messages) || [];
-      var text = '';
-      msgs.forEach(function (m) {
-        (m.fragments || []).forEach(function (f) { text += f.content || ''; });
-        if (typeof m.content === 'string') text += m.content;
-      });
+      var msgs = biz && biz.chat_messages;
+      if (!Array.isArray(msgs)) return;
       var sid = (biz.chat_session && biz.chat_session.id) || this.sid;
       if (!sid) return;
       this.loadSid(sid);
+      var maxTok = 0, text = '';
+      msgs.forEach(function (m) {
+        if (typeof m.accumulated_token_usage === 'number') maxTok = Math.max(maxTok, m.accumulated_token_usage);
+        (m.fragments || []).forEach(function (f) { text += f.content || ''; });
+      });
       var est = Utils.estimateTokens(text);
-      var s = DSE.config.session(sid);
-      // 估算只增不减；若服务端已有权威值，以其为下限
-      est = Math.max(est, s.serverTokens || 0);
-      if (est > (s.usedTokensEst || 0)) { s.usedTokensEst = est; DSE.config.saveSessions(); this.emit(); }
+      var s = DSE.config.session(sid), changed = false;
+      if (maxTok > (s.serverTokens || 0)) { s.serverTokens = maxTok; changed = true; }
+      var floor = Math.max(maxTok, s.serverTokens || 0);
+      if (est > floor && est > (s.usedTokensEst || 0)) { s.usedTokensEst = est; changed = true; }
+      if (changed) { DSE.config.saveSessions(); this.emit(); }
     } catch (e) {}
   },
-  // 供面板调用：{used, limit, pct, level, source}
   getUsage: function () {
     var sid = this.sid || Utils.currentSid();
     var s = sid ? DSE.config.session(sid) : { serverTokens: 0, usedTokensEst: 0 };
@@ -1400,16 +1368,35 @@ var Context = {
     return {
       used: used, limit: limit, pct: pct,
       level: pct >= 90 ? 'danger' : (pct >= 75 ? 'warn' : 'ok'),
-      source: (s.serverTokens || 0) > 0 ? 'server' : 'estimate'
+      source: (s.serverTokens || 0) > 0 ? 'server' : ((s.usedTokensEst || 0) > 0 ? 'estimate' : 'empty')
     };
   },
   emit: function () { DSE.emit('ctx:update', this.getUsage()); },
-  reset: function () {
-    var sid = this.sid || Utils.currentSid();
-    if (!sid) return;
-    var s = DSE.config.session(sid); s.usedTokensEst = 0; s.serverTokens = 0;
-    this.live = 0; DSE.config.saveSessions(); this.emit();
+
+  // 主动重新统计：拉一次当前会话的 history_messages（与官网同接口），实时重算
+  recompute: function () {
+    var self = this, sid = Utils.currentSid();
+    if (!sid) { Utils.toast('请先进入一个对话'); return Promise.resolve(); }
+    if (this.busy) return Promise.resolve();
+    this.busy = true; Utils.toast('正在重新统计…');
+    return fetch('/api/v0/chat/history_messages?chat_session_id=' + encodeURIComponent(sid), {
+      method: 'GET', credentials: 'include', headers: { 'Accept': 'application/json' }
+    }).then(function (r) { return r.text(); }).then(function (txt) {
+      var json = JSON.parse(txt);
+      var s = DSE.config.session(sid); s.serverTokens = 0; s.usedTokensEst = 0; self.live = 0;
+      self.onHistory({ json: json });
+      // DOM 兜底：当前已渲染消息文本估算
+      var domText = '';
+      document.querySelectorAll('.ds-markdown, .fbb737a4').forEach(function (n) { domText += n.innerText || ''; });
+      var est = Utils.estimateTokens(domText);
+      if (est > (s.usedTokensEst || 0)) { s.usedTokensEst = est; DSE.config.saveSessions(); }
+      self.sid = sid; self.emit();
+      var u = self.getUsage();
+      Utils.toast('统计完成：约 ' + (u.used >= 1000 ? (u.used / 1000).toFixed(1) + 'K' : u.used) + ' tokens');
+    }).catch(function () { Utils.toast('统计失败（可能需要联网）'); })
+      .then(function () { self.busy = false; });
   },
+
   init: function () {
     var self = this;
     DSE.on('sse:tokens', function (p) { self.setServer(p.ctx.sid || Utils.currentSid(), p.used); });
@@ -1645,7 +1632,7 @@ var Panel = {
         '<div class="dse-ctx-meta"><span data-ctx-text></span><span data-ctx-pct></span></div></div>' +
         '<div class="dse-range-row"><span>上下文上限</span><input type="range" min="32000" max="1024000" step="32000" data-bind="ctxLimitTokens"><span class="dse-range-val" data-val="ctxLimitTokens"></span></div>' +
         '<div class="dse-row-desc" style="margin:-2px 0 6px">快速模式约 128K，专家模式(V3.2/V4)约 1M，按所用模型调整。</div>' +
-        '<button class="dse-btn ghost" data-act="resetCtx" style="width:100%">重新统计本会话</button>' +
+        '<button class="dse-btn ghost" data-act="resetCtx" style="width:100%">立即重新统计（拉取本会话历史）</button>' +
       '</div>' +
 
       // ============ 提示词 ============
@@ -1751,7 +1738,7 @@ var Panel = {
     if (act === 'uploadBg') return this.el.querySelector('[data-role="bgFile"]').click();
     if (act === 'defaultBg') { DSE.config.set('bg.url', DSE.config.defaults.bg.url); DSE.config.set('bg.upload', ''); DSE.config.set('bg.enabled', true); this.refresh(); }
     if (act === 'clearBg') { DSE.config.set('bg.enabled', false); DSE.config.set('bg.upload', ''); this.refresh(); }
-    if (act === 'resetCtx') { DSE.modules.context.reset(); this.refreshCtx(); }
+    if (act === 'resetCtx') { var selfP = this; DSE.modules.context.recompute().then(function () { selfP.refreshCtx(); }); return; }
     if (act === 'resetTpl') { DSE.modules.prompt.resetTpl(); this.refresh(); }
     if (act === 'previewPrompt') {
       var box = this.el.querySelector('[data-preview]');
