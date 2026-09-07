@@ -77,13 +77,13 @@ node build.js               # 拼接出最终脚本
 
 `android/` 是把同源 `dist/inject.js` 装进原生 WebView 的全屏套壳工程（应用名 DeepSleep）：
 
-- **document-start 注入**：通过 androidx.webkit 的 `addDocumentStartJavaScript` 在页面任何脚本前运行（旧 WebView 回退 onPageStarted）；早期脚本与 inject.js 整体包在同一个 IIFE 内（顶层 `return` 会导致整段语法错误而静默失效，v8.3.1 已修复），viewport/主题首帧即正确，顶栏不错位；
-- **全屏沉浸**：透明状态栏/导航栏、shortEdges 刘海延伸、IMMERSIVE_STICKY，无黑线、无开屏广告；
-- **键盘适配**：经典全屏标志（LAYOUT_FULLSCREEN/LAYOUT_HIDE_NAVIGATION，不用 decorFitsSystemWindows edge-to-edge）+ `SOFT_INPUT_ADJUST_RESIZE`，由系统直接缩放窗口，固定底栏被键盘自然顶起（edge-to-edge 手动补 IME padding 在部分 WebView 不派发，已弃用）；覆写 `onCreateInputConnection`（多行 + `IME_ACTION_SEND`、清除 `IME_FLAG_NO_ENTER_ACTION`），输入法**同时保留「换行」键并显示独立「发送」动作键**；发送键精确命中 `.ds-button--primary.ds-button--filled` 蓝色实心圆（左侧 iconLabelPrimary 是附件键，不能点），回调必须 `runOnUiThread`；物理键盘 Enter 发送、Shift+Enter 换行；
+- **document-start 注入**：通过 androidx.webkit 的 `addDocumentStartJavaScript` 在页面任何脚本前运行；无论注册是否成功，onPageStarted/onPageFinished 都幂等补跑完整引导（`__DSE_INJECTED__` guard），三层兜底杜绝“主题生效但增强全死”；早期脚本与 inject.js 整体包在同一个 IIFE 内（顶层 `return` 会导致整段语法错误而静默失效，v8.3.1 已修复）；内联 JS 抽在无 Android 依赖的 `InlineJs.java`，`tools/Gen.java` 直接编译真实类拼出最终注入串再 `node --check`，防止拼接语法错误上线；
+- **全屏沉浸**：edge-to-edge（`setDecorFitsSystemWindows(false)`）+ 仅保留 LAYOUT_STABLE/LAYOUT_FULLSCREEN/LAYOUT_HIDE_NAVIGATION 布局穿透标志 + 透明系统栏，手势导航下等同全屏、无黑线；**绝不使用** FLAG_FULLSCREEN / SYSTEM_UI_FLAG_HIDE_NAVIGATION / IMMERSIVE_STICKY——实测这些标志会同时让 adjustResize 与 IME insets 失效（键盘顶不起布局的共同根因）；
+- **键盘适配（Android11 模拟器实测通过）**：edge-to-edge 下窗口不会自动 resize，由两条通道测量键盘高度——现代 `WindowInsetsCompat.Type.ime()` 与 `OnGlobalLayoutListener` 可见区域测量（SoftInputAssist 原理）取最大值；关键：必须用该高度压缩 **WebView 的布局高度（bottomMargin）**而不是加 padding——Chromium WebView 的 fixed 元素锚定在自身视口底边，padding 不移动该底边（这是早期版本连原生官网输入框都顶不起来的根因），布局高度收缩后网页 visualViewport 同步收缩，fixed 输入框自然落到键盘上方，收起键盘对称恢复；覆写 `onCreateInputConnection`（多行 + `IME_ACTION_SEND`、清除 `IME_FLAG_NO_ENTER_ACTION`），输入法**同时保留「换行」键并显示独立「发送」动作键**；发送键精确命中 `.ds-button--primary.ds-button--filled` 蓝色实心圆（左侧 iconLabelPrimary 是附件键，不能点），回调必须 `runOnUiThread`；物理键盘 Enter 发送、Shift+Enter 换行；
 - **系统级分享联动**：Manifest 注册 `ACTION_SEND text/plain`，任意 App 选中文本 → 分享 → DeepSleep，经 `@JavascriptInterface` 桥用 React 原生 setter 填入输入框；
 - **线程安全**：输入法动作键回调在 IME binder 线程，`evaluateJavascript` 必须 `runOnUiThread` 回主线程，否则点发送即闪退；
 - **APK 专属出厂默认**（document-start 仅在配置不存在时写入，不影响油猴脚本）：顶栏背景透出、全屏按钮关、时间注入开；
-- **零白闪**：root 明暗底色常驻 + 开屏 logo 单独淡出 + WebView 同色底，加载/重载/切主题均不露白；
+- **零白闪**：root/开屏/WebView 三层底色与官网 body 最终底色严格一致（实测深色 `#151517`、浅色 `#ffffff`）；document-start 注入首帧底色样式，**等 body 挂上 light/dark 主题类（且去掉 change-theme 过渡类）后再移除**（MutationObserver+6s 兜底），避免 load 早于主题应用造成的白闪；
 - **开屏页**：居中睡鲸 logo，底色随系统明暗（values-night），首屏渲染后淡出；
 - **主题跟随系统**：document-start 按系统明暗写入 DeepSeek 主题键，系统切换后自动刷新；
 - 保留文件上传（识图）、摄像头/麦克风按需授权、网页内返回。
