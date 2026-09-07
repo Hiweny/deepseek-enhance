@@ -1,0 +1,36 @@
+plugins {
+    id 'com.android.application'
+}
+
+android {
+    namespace 'com.deepsleep.app'
+    compileSdk 34
+
+    defaultConfig {
+        applicationId "com.deepsleep.app"
+        minSdk 24
+        targetSdk 34
+        versionCode 1
+        versionName "8.2.0"
+    }
+
+    buildTypes {
+        release {
+            minifyEnabled false
+            // 用 debug 签名直接出可安装包，免去自建 keystore；如需上架再换正式签名
+            signingConfig signingConfigs.debug
+        }
+    }
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_17
+        targetCompatibility JavaVersion.VERSION_17
+    }
+}
+
+// 每次构建前把同源注入脚本同步进 assets（保持单一数据源）
+tasks.register('syncInject', Copy) {
+    from rootProject.file('../dist/inject.js')
+    into file('src/main/assets')
+    rename { 'inject.js' }
+}
+tasks.matching { it.name == 'preBuild' }.configureEach { it.dependsOn('syncInject') }
