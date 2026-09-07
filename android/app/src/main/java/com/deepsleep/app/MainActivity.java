@@ -68,66 +68,17 @@ public class MainActivity extends Activity {
                 == Configuration.UI_MODE_NIGHT_YES;
     }
 
-    private int pageBgColor() { return isDark() ? 0xFF0D0F15 : 0xFFF4F6FB; }
-    private String pageBgCss() { return isDark() ? "#0D0F15" : "#F4F6FB"; }
+    // 与官网 body 最终底色严格一致（实测：深色 rgb(21,21,23)、浅色 rgb(255,255,255)），避免交接瞬间色差
+    private int pageBgColor() { return isDark() ? 0xFF151517 : 0xFFFFFFFF; }
+    private String pageBgCss() { return isDark() ? "#151517" : "#ffffff"; }
 
-    private String earlyInner() {
-        boolean dark = isDark();
-        String bg = pageBgCss();
-        return "window.__DSE_WEBVIEW__=true;"
-                + "try{var m=document.querySelector('meta[name=viewport]');"
-                + "if(!m){m=document.createElement('meta');m.name='viewport';(document.head||document.documentElement).appendChild(m);}"
-                + "m.content='width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover';}catch(e){}"
-                // 首帧底色，压住官网默认白底，load 后交还
-                + "try{var ss=document.getElementById('__dse_firstpaint')||document.createElement('style');"
-                + "ss.id='__dse_firstpaint';ss.textContent='html,body{background:" + bg + "!important}';"
-                + "(document.head||document.documentElement).appendChild(ss);"
-                + "window.addEventListener('load',function(){var e=document.getElementById('__dse_firstpaint');if(e)e.remove();});"
-                + "}catch(e){}"
-                // APK 专属出厂默认（仅首次写入，不影响油猴脚本）
-                + "try{if(!localStorage.getItem('dse_config_v1')){"
-                + "localStorage.setItem('dse_config_v1',JSON.stringify({topbarStyle:'transparent',fullscreenBtn:false,timeInject:true}));}}catch(e){}"
-                // 主题跟随系统
-                + "try{var KEY='__appKit_@deepseek/chat_themePreference';"
-                + "function dseApplyTheme(){localStorage.setItem(KEY,JSON.stringify({value:'" + (dark ? "dark" : "light") + "',__version':'0'}));}"
-                + "dseApplyTheme();"
-                + "window.addEventListener('storage',function(e){if(e.key===KEY)setTimeout(dseApplyTheme,0)});"
-                + "}catch(e){}"
-                // 物理键盘 Enter 发送
-                + "document.addEventListener('keydown',function(e){"
-                + "if(e.key!=='Enter'||e.shiftKey||e.isComposing||e.ctrlKey||e.metaKey||e.altKey)return;"
-                + "var t=e.target;if(!t||t.tagName!=='TEXTAREA')return;e.preventDefault();window.__dseClickSend&&window.__dseClickSend();"
-                + "},true);"
-                // 分享文本填槽
-                + "(function(){function dseFill(t){"
-                + "var ta=document.querySelector('textarea');if(!ta)return false;"
-                + "var setter=Object.getOwnPropertyDescriptor(window.HTMLTextAreaElement.prototype,'value').set;"
-                + "setter.call(ta,t);ta.dispatchEvent(new Event('input',{bubbles:true}));ta.focus();return true;}"
-                + "var n=0;var timer=setInterval(function(){n++;"
-                + "var t='';try{if(window.DSENative)t=DSENative.consumeShared()||'';}catch(e){}"
-                + "if(t)dseFill(t);if(n>40)clearInterval(timer);},300);"
-                + "window.__dseFillShared=dseFill;})();";
-    }
-
-    private String earlyJs() { return "(function(){" + earlyInner() + "})();"; }
+    private String earlyJs() { return InlineJs.early(isDark(), pageBgCss()); }
 
     private String fullBootstrapJs() {
-        return "(function(){"
-                + earlyInner()
-                + "if(window.__DSE_INJECTED__)return;window.__DSE_INJECTED__=true;"
-                + "\n" + injectJs() + "\n"
-                + "})();";
+        return InlineJs.fullBootstrap(isDark(), pageBgCss(), injectJs());
     }
 
-    /** 发送键 = 最右侧蓝色实心圆（.ds-button--primary.ds-button--filled），左侧 iconLabelPrimary 是附件键 */
-    private String clickSendJs() {
-        return "(function(){window.__dseClickSend=function(){"
-                + "var ta=document.querySelector('textarea');if(!ta)return;"
-                + "var p=ta;for(var i=0;i<8&&p;i++){"
-                + "var b=p.querySelector('div[role=button].ds-button--primary.ds-button--filled,button.ds-button--primary.ds-button--filled');"
-                + "if(b){if(b.getAttribute('aria-disabled')!=='true'&&!b.classList.contains('ds-button--disabled'))b.click();return;}"
-                + "p=p.parentElement;}};window.__dseClickSend();})();";
-    }
+    private String clickSendJs() { return InlineJs.clickSend(); }
 
     private String injectJs() {
         if (injectJs != null) return injectJs;
@@ -213,6 +164,7 @@ public class MainActivity extends Activity {
 
         setupKeyboard();
 
+        WebView.setWebContentsDebuggingEnabled(true);
         WebSettings s = web.getSettings();
         s.setJavaScriptEnabled(true);
         s.setDomStorageEnabled(true);
@@ -315,10 +267,22 @@ public class MainActivity extends Activity {
 
     private int dp(int v) { return Math.round(v * getResources().getDisplayMetrics().density); }
 
+    /**
+     * 关键：必须压缩 WebView 的【布局高度】（bottomMargin），而不是给 WebView 加 padding。
+     * Chromium WebView 内 position:fixed 的输入框停靠在自己的视口底边，padding 不会移动视口底边，
+     * 只有 View 高度真正变小，网页 visualViewport 才会收缩、fixed 输入框才会被顶到键盘上方。
+     */
     private void applyWebPadding() {
         if (web == null) return;
         int bottom = Math.max(imePadModern, imePadLegacy);
-        if (web.getPaddingBottom() != bottom) web.setPadding(0, 0, 0, bottom);
+        ViewGroup.LayoutParams lp = web.getLayoutParams();
+        if (lp instanceof FrameLayout.LayoutParams) {
+            FrameLayout.LayoutParams flp = (FrameLayout.LayoutParams) lp;
+            if (flp.bottomMargin != bottom) {
+                flp.bottomMargin = bottom;
+                web.setLayoutParams(flp);
+            }
+        }
     }
 
     /**
