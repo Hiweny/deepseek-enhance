@@ -2,8 +2,8 @@
 // @name         DeepSeek Enhance 深度增强
 // @name:en      DeepSeek Enhance
 // @namespace    https://github.com/Hiweny/deepseek-enhance
-// @version      8.0.0
-// @description  水玻璃气泡/反斜杠多消息分条/思考自动折叠/Markdown美化与贴图/图片URL背景/双模式提示词工程(助手·Waifu长期对话)/防撤回智能回填/长期记忆总结/上下文用量/输入框磨砂/移动端适配
+// @version      8.1.0
+// @description  水玻璃气泡/思考自动折叠/Markdown本地美化/图片URL背景/按会话隔离的系统提示词/防撤回(连续撤回回填·重载对账)/上下文用量/输入框磨砂/顶栏修复/移动端适配
 // @updateURL    https://raw.githubusercontent.com/Hiweny/deepseek-enhance/main/deepseek-enhance.meta.js
 // @downloadURL  https://raw.githubusercontent.com/Hiweny/deepseek-enhance/main/deepseek-enhance.user.js
 // @author       Hiweny

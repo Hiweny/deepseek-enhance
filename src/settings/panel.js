@@ -1,5 +1,6 @@
 /* ============================================================
- * settings/panel：统一设置面板（移动优先；分区清晰、高级项折叠）
+ * settings/panel：统一设置面板（移动优先；分区清晰、不拥挤）
+ *  外观 / 对话 / 提示词 / 其他
  * ============================================================ */
 var Panel = {
   el: null, open_: false,
@@ -15,7 +16,7 @@ var Panel = {
     el.innerHTML =
       '<button class="dse-p-close" data-act="close">×</button>' +
       '<div class="dse-p-tabs">' +
-        [['look', '外观'], ['chat', '对话'], ['role', '角色'], ['priv', '隐私'], ['more', '其他']].map(function (t, i) {
+        [['look', '外观'], ['chat', '对话'], ['prompt', '提示词'], ['more', '其他']].map(function (t, i) {
           return '<button class="dse-p-tab' + (i === 0 ? ' dse-active' : '') + '" data-tab="' + t[0] + '">' + t[1] + '</button>';
         }).join('') +
       '</div><div class="dse-p-body">' +
@@ -38,7 +39,7 @@ var Panel = {
         '<div class="dse-p-sec">界面</div>' +
         this.sw('inputFrosted', '输入框悬浮磨砂') +
         this.sw('fixTopbar', '统一顶栏', '消除分享按钮单独底色/标题黑条') +
-        this.sw('hideDownloadApp', '隐藏“下载应用”', '仅移动版欢迎页') +
+        this.sw('hideDownloadApp', '隐藏“下载应用”', '仅欢迎页，不影响新建对话/侧栏按钮') +
         '<div class="dse-range-row"><span>页面缩放</span><input type="range" min="60" max="180" step="5" data-bind="zoom"><span class="dse-range-val" data-val="zoom"></span></div>' +
       '</div>' +
 
@@ -46,63 +47,34 @@ var Panel = {
       '<div class="dse-p-page" data-page="chat">' +
         '<div class="dse-p-title">消息呈现</div>' +
         this.sw('thinkAutoCollapse', '思考区自动折叠', '默认收起 DeepSeek 思考过程') +
-        this.sw('hideAiActions', '隐藏 AI 操作栏', '复制/重试/赞/踩/分享') +
         this.sw('hideAiBadge', '隐藏 AI 生成标识', '底部“内容由 AI 生成”等') +
-        '<div class="dse-p-sec">多消息气泡（\\ 分隔）</div>' +
-        this.sw('bubbleSplit', '开启多消息分割', 'AI 回复完成后按单独一行的 \\ 切成多条，依次浮现') +
-        this.sw('bubbleSplitAnim', '逐条浮现动画', '模拟真人发送间隔') +
-        '<div class="dse-p-sec">Markdown</div>' +
-        this.sw('markdownPretty', 'Markdown 排版美化', '关闭后会提示 AI 用纯文本回复') +
-        this.sw('markdownImage', '图片贴图', '允许 AI 用图片链接贴图，多消息下图片独立成条') +
+        this.sw('markdownPretty', 'Markdown 排版美化', '只改本地样式，不向 AI 发送任何指令') +
         this.sw('timeInject', '隐式时间注入') +
         '<div class="dse-p-sec">本会话上下文用量</div>' +
         '<div class="dse-ctx"><div class="dse-ctx-track"><div class="dse-ctx-fill" data-ctx-fill></div></div>' +
         '<div class="dse-ctx-meta"><span data-ctx-text></span><span data-ctx-pct></span></div></div>' +
-        '<div class="dse-range-row"><span>上下文上限</span><input type="range" min="32000" max="256000" step="8000" data-bind="ctxLimitTokens"><span class="dse-range-val" data-val="ctxLimitTokens"></span></div>' +
-        '<button class="dse-btn ghost" data-act="resetCtx" style="width:100%;margin-top:4px">重新统计</button>' +
+        '<div class="dse-range-row"><span>上下文上限</span><input type="range" min="32000" max="1024000" step="32000" data-bind="ctxLimitTokens"><span class="dse-range-val" data-val="ctxLimitTokens"></span></div>' +
+        '<div class="dse-row-desc" style="margin:-2px 0 6px">快速模式约 128K，专家模式(V3.2/V4)约 1M，按所用模型调整。</div>' +
+        '<button class="dse-btn ghost" data-act="resetCtx" style="width:100%">重新统计本会话</button>' +
       '</div>' +
 
-      // ============ 角色 / 提示词 ============
-      '<div class="dse-p-page" data-page="role">' +
-        '<div class="dse-p-title">运行模式</div>' +
-        '<div class="dse-cards" data-cards="mode">' +
-          '<button class="dse-card" data-card-val="assistant"><b>AI 助手</b><small>系统提示词仅当前会话生效，互不干扰，适合日常问答</small></button>' +
-          '<button class="dse-card" data-card-val="waifu"><b>Waifu 长期陪伴</b><small>系统提示词跨会话持久，配合第一人称长期记忆摘要</small></button>' +
-        '</div>' +
-        '<div data-modebox="assistant" style="margin-top:12px">' +
-          this.sw('systemPromptEnabled', '启用本会话系统提示词', '只对当前会话生效，切换会话互不影响') +
-          '<textarea class="dse-text" data-session="assistantSystemPrompt" placeholder="写给当前会话 AI 的系统设定…" style="min-height:110px;margin-top:8px"></textarea>' +
-        '</div>' +
-        '<div data-modebox="waifu" style="display:none;margin-top:12px">' +
-          '<div class="dse-row-desc" style="margin-bottom:6px">跨会话系统提示词（持久保存，随时可改）</div>' +
-          '<textarea class="dse-text" data-bind="waifu.systemPrompt" style="min-height:150px"></textarea>' +
-          '<div class="dse-btn-row"><button class="dse-btn ghost" data-act="waifuExample">恢复范例</button>' +
-          '<button class="dse-btn danger" data-act="waifuClear">清空</button></div>' +
-          '<details class="dse-details"><summary>长期记忆（对话总结）</summary>' +
-            this.sw('waifu.autoSummary', '自动总结', '上下文较长时自动更新长期记忆') +
-            '<div class="dse-range-row"><span>总结阈值</span><input type="range" min="2000" max="20000" step="1000" data-bind="waifu.summaryThreshold"><span class="dse-range-val" data-val="waifu.summaryThreshold"></span></div>' +
-            '<div class="dse-range-row"><span>上下文窗口</span><input type="range" min="10" max="120" step="2" data-bind="waifu.ctxWindowMessages"><span class="dse-range-val" data-val="waifu.ctxWindowMessages"></span></div>' +
-            '<div class="dse-btn-row"><button class="dse-btn" data-act="summaryNow">立即总结</button>' +
-            '<button class="dse-btn ghost" data-act="clearSummary">清除摘要</button></div>' +
-            '<div class="dse-row-desc" style="margin:8px 0 4px">当前长期记忆摘要</div>' +
-            '<textarea class="dse-text" data-session="waifuSummary" style="min-height:100px"></textarea>' +
-          '</details>' +
-        '</div>' +
-        '<details class="dse-details"><summary>高级：注入指令模板（透明可编辑）</summary>' +
-          '<label class="dse-row-desc">多消息分割指令</label><textarea class="dse-text" data-tpl="multi"></textarea>' +
-          '<label class="dse-row-desc" style="margin-top:8px">纯文本指令（关闭 Markdown 时）</label><textarea class="dse-text" data-tpl="noMarkdown"></textarea>' +
-          '<label class="dse-row-desc" style="margin-top:8px">图片贴图指令</label><textarea class="dse-text" data-tpl="image"></textarea>' +
-          '<label class="dse-row-desc" style="margin-top:8px">撤回后简短回应</label><textarea class="dse-text" data-tpl="recallBrief"></textarea>' +
-          '<label class="dse-row-desc" style="margin-top:8px">长期总结指令</label><textarea class="dse-text" data-tpl="summary" style="min-height:110px"></textarea>' +
+      // ============ 提示词 ============
+      '<div class="dse-p-page" data-page="prompt">' +
+        '<div class="dse-p-title">本会话系统提示词</div>' +
+        '<div class="dse-row-desc" style="margin-bottom:6px">只对当前这一个会话生效；切换到其它会话互不影响、互不可见。</div>' +
+        this.sw('systemPromptEnabled', '启用本会话系统提示词') +
+        '<textarea class="dse-text" data-session="assistantSystemPrompt" placeholder="写给当前会话 AI 的系统设定…" style="min-height:150px;margin-top:8px"></textarea>' +
+        '<details class="dse-details" style="margin-top:10px"><summary>高级：实际注入内容预览 / 模板</summary>' +
+          '<label class="dse-row-desc">撤回后简短回应（模板，可编辑）</label><textarea class="dse-text" data-tpl="recallBrief" style="min-height:80px"></textarea>' +
           '<div class="dse-btn-row"><button class="dse-btn ghost" data-act="resetTpl">恢复默认</button>' +
           '<button class="dse-btn ghost" data-act="previewPrompt">预览实际注入</button></div>' +
           '<div class="dse-preview" data-preview style="display:none"></div>' +
         '</details>' +
       '</div>' +
 
-      // ============ 隐私 ============
-      '<div class="dse-p-page" data-page="priv">' +
-        '<div class="dse-p-title">防撤回 / 隐私模式</div>' +
+      // ============ 其他 ============
+      '<div class="dse-p-page" data-page="more">' +
+        '<div class="dse-p-title">防撤回 / 隐私</div>' +
         '<div class="dse-seg" data-seg="privacyMode">' +
           '<button data-v="off">关闭</button><button data-v="smart">智能</button><button data-v="full">全量</button></div>' +
         '<div class="dse-row-desc" style="margin:8px 0">智能：连续撤回连续补回；服务端重载上下文后只补最新缺失轮次。全量：每次发送都拼接本地历史。</div>' +
@@ -110,10 +82,7 @@ var Panel = {
         '<div class="dse-range-row"><span>全量历史条数</span><input type="range" min="5" max="100" step="5" data-bind="privacyCtxMessages"><span class="dse-range-val" data-val="privacyCtxMessages"></span></div>' +
         '<div class="dse-p-sec" data-hist-info></div>' +
         '<button class="dse-btn danger" data-act="clearHist" style="width:100%">清除本会话本地历史</button>' +
-      '</div>' +
-
-      // ============ 其他 ============
-      '<div class="dse-p-page" data-page="more">' +
+        '<div class="dse-p-sec">便捷功能</div>' +
         this.sw('navButtons', '消息上下导航按钮') +
         this.sw('fullscreenBtn', '一键全屏按钮') +
         '<div class="dse-p-sec">关于</div>' +
@@ -157,7 +126,7 @@ var Panel = {
         var v = inp.type === 'range' ? Number(inp.value) : inp.value;
         DSE.config.set(path, v);
         var valEl = el.querySelector('[data-val="' + path + '"]');
-        if (valEl) valEl.textContent = inp.type === 'range' ? inp.value : '';
+        if (valEl) valEl.textContent = inp.type === 'range' ? Panel.fmtLimit(path, Number(inp.value)) : '';
         if (path === 'zoom') DSE.modules.zoom && DSE.modules.zoom.apply(Number(inp.value));
       });
     });
@@ -181,17 +150,18 @@ var Panel = {
     }, true);
   },
 
+  fmtLimit: function (path, v) {
+    if (path === 'ctxLimitTokens') return v >= 1000 ? (v / 1000) + 'K' : String(v);
+    return String(v);
+  },
+
   action: function (act) {
     var sid = Utils.currentSid();
     if (act === 'close') return this.hide();
     if (act === 'uploadBg') return this.el.querySelector('[data-role="bgFile"]').click();
     if (act === 'defaultBg') { DSE.config.set('bg.url', DSE.config.defaults.bg.url); DSE.config.set('bg.upload', ''); DSE.config.set('bg.enabled', true); this.refresh(); }
     if (act === 'clearBg') { DSE.config.set('bg.enabled', false); DSE.config.set('bg.upload', ''); this.refresh(); }
-    if (act === 'resetCtx') { DSE.config.setSession(sid, { usedTokens: 0 }); this.refreshCtx(); }
-    if (act === 'summaryNow') { var p = DSE.modules.summary.run(sid, false); this.hide(); return p; }
-    if (act === 'clearSummary') { DSE.config.setSession(sid, { waifuSummary: '' }); this.refresh(); }
-    if (act === 'waifuExample') { DSE.config.set('waifu.systemPrompt', DSE.config.defaults.waifu.systemPrompt); this.refresh(); }
-    if (act === 'waifuClear') { DSE.config.set('waifu.systemPrompt', ''); this.refresh(); }
+    if (act === 'resetCtx') { DSE.modules.context.reset(); this.refreshCtx(); }
     if (act === 'resetTpl') { DSE.modules.prompt.resetTpl(); this.refresh(); }
     if (act === 'previewPrompt') {
       var box = this.el.querySelector('[data-preview]');
@@ -212,7 +182,8 @@ var Panel = {
       if (document.activeElement !== inp) inp.value = v == null ? '' : v;
     });
     el.querySelectorAll('[data-val]').forEach(function (v) {
-      v.textContent = resolve(c, v.getAttribute('data-val')) ?? '';
+      var path = v.getAttribute('data-val');
+      v.textContent = Panel.fmtLimit(path, resolve(c, path)) ?? '';
     });
     el.querySelectorAll('[data-seg]').forEach(function (seg) {
       var cur = resolve(c, seg.getAttribute('data-seg'));
@@ -229,9 +200,6 @@ var Panel = {
     el.querySelectorAll('[data-tpl]').forEach(function (ta) {
       if (document.activeElement !== ta) ta.value = DSE.modules.prompt.tpl(ta.getAttribute('data-tpl'));
     });
-    el.querySelectorAll('[data-modebox]').forEach(function (b) {
-      b.style.display = b.getAttribute('data-modebox') === c.mode ? '' : 'none';
-    });
     this.refreshCtx();
     if (this.open_) this.position();
   },
@@ -241,8 +209,9 @@ var Panel = {
     if (!fill) return;
     fill.style.width = u.pct + '%';
     fill.className = 'dse-ctx-fill ' + (u.level === 'danger' ? 'danger' : u.level === 'warn' ? 'warn' : '');
-    var k = function (n) { return n >= 1000 ? (n / 1000).toFixed(1) + 'k' : String(n); };
-    this.el.querySelector('[data-ctx-text]').textContent = '约 ' + k(u.used) + ' / ' + k(u.limit) + (u.pct >= 75 ? '（建议新对话）' : '');
+    var k = function (n) { return n >= 1000 ? (n / 1000).toFixed(0) + 'K' : String(n); };
+    this.el.querySelector('[data-ctx-text]').textContent =
+      '约 ' + k(u.used) + ' / ' + k(u.limit) + (u.source === 'estimate' ? '（估算）' : '') + (u.pct >= 75 ? '（建议新对话）' : '');
     this.el.querySelector('[data-ctx-pct]').textContent = u.pct + '%';
     var hist = DSE.modules.antiRecall.getHistory(Utils.currentSid());
     var recalled = hist.filter(function (h) { return h.recalled && !h.serverHas; }).length;
@@ -274,7 +243,6 @@ var Panel = {
     var self = this;
     Utils.onReady(function () { self.build(); });
     DSE.on('ctx:update', function () { if (self.open_) self.refreshCtx(); });
-    DSE.on('summary:updated', function () { if (self.open_) self.refresh(); });
     document.addEventListener('keydown', function (e) {
       if (e.ctrlKey && e.shiftKey && (e.key === 'B' || e.code === 'KeyB')) { e.preventDefault(); self.toggle(); }
     });
