@@ -1,37 +1,40 @@
 /* ============================================================
  * modules/tweaks：UI 细节
- *  - 隐藏 AI 底部操作栏 / 移动版“下载应用”
- *  - 顶栏统一、输入框磨砂（样式见 tweaks.css）
+ *  - 只隐藏移动欢迎页“下载应用”本体（保留新建对话/展开侧栏等其它按钮）
+ *  - 隐藏“内容由 AI 生成”标识；顶栏统一、输入框磨砂（样式见 tweaks.css）
  * ============================================================ */
 var Tweaks = {
   syncBodyClasses: function () {
     var c = DSE.config;
-    document.body.classList.toggle('dse-hide-actions', !!c.get('hideAiActions'));
     document.body.classList.toggle('dse-hide-badge', !!c.get('hideAiBadge'));
     document.body.classList.toggle('dse-input-frosted', !!c.get('inputFrosted'));
     document.body.classList.toggle('dse-fix-topbar', !!c.get('fixTopbar'));
     document.body.classList.toggle('dse-md-pretty', !!c.get('markdownPretty'));
   },
+  // 精确命中“下载应用”：只标记最小命中元素，绝不标记 .the-header / 按钮容器
   hideDownloadApp: function () {
     if (!DSE.config.get('hideDownloadApp')) return;
     if (Utils.currentSid()) return; // 仅欢迎页
-    var nodes = document.querySelectorAll('.the-header, [class*="the-header"]');
-    for (var i = 0; i < nodes.length; i++) {
-      var n = nodes[i];
-      if (n.offsetParent === null) continue;
-      if (/下载\s*(应用|APP|App)/.test(n.textContent || '') && (n.textContent || '').length < 12) {
-        // 找到可点击按钮的合适外层
-        var box = n.querySelector('[role="button"]') ? n : n;
-        box.setAttribute('data-dse-hide', '1');
+    var re = /^\s*下载\s*(应用|APP|App)\s*$/;
+    // 兜底：清掉历史版本误标在 header 上的隐藏标记
+    document.querySelectorAll('.the-header[data-dse-hide]').forEach(function (h) { h.removeAttribute('data-dse-hide'); });
+    var candidates = document.querySelectorAll('._9579690, [class*="ds-button"]');
+    for (var i = 0; i < candidates.length; i++) {
+      var n = candidates[i];
+      if (n.classList.contains('the-header')) continue;
+      // 自身文本恰好是“下载应用”，且内部确实含按钮/胶囊
+      if (re.test(n.textContent || '') && (n.textContent || '').length < 16 && n.querySelector('[role="button"],button')) {
+        n.setAttribute('data-dse-hide', '1');
       }
     }
   },
   hideAiBadgeText: function () {
     if (!DSE.config.get('hideAiBadge')) return;
-    // 文本兜底：隐藏“内容由 AI 生成”类标识（取最小命中元素）
     var re = /内容由\s*AI\s*生成|由\s*AI\s*生成|AI\s*generated/i;
     document.querySelectorAll('div,span,p').forEach(function (n) {
       if (n.getAttribute('data-dse-hide')) return;
+      // 绝不动设置面板自身（面板里有同名说明文字）
+      if (n.closest('#dse-panel')) return;
       if (n.children.length > 2) return;
       var t = (n.textContent || '').trim();
       if (t && t.length < 30 && re.test(t)) n.setAttribute('data-dse-hide', '1');
