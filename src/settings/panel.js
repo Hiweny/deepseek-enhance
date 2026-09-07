@@ -39,6 +39,8 @@ var Panel = {
         '<div class="dse-p-sec">界面</div>' +
         this.sw('inputFrosted', '输入框悬浮磨砂') +
         this.sw('fixTopbar', '统一顶栏', '消除分享按钮单独底色/标题黑条') +
+        '<div class="dse-seg" data-seg="topbarStyle" style="margin:2px 0 6px">' +
+          '<button data-v="frosted">磨砂</button><button data-v="transparent">背景透出</button></div>' +
         this.sw('hideDownloadApp', '隐藏“下载应用”', '仅欢迎页，不影响新建对话/侧栏按钮') +
         '<div class="dse-range-row"><span>页面缩放</span><input type="range" min="60" max="180" step="5" data-bind="zoom"><span class="dse-range-val" data-val="zoom"></span></div>' +
       '</div>' +
@@ -49,6 +51,7 @@ var Panel = {
         this.sw('thinkAutoCollapse', '思考区自动折叠', '默认收起 DeepSeek 思考过程') +
         this.sw('hideAiBadge', '隐藏 AI 生成标识', '底部“内容由 AI 生成”等') +
         this.sw('markdownPretty', 'Markdown 排版美化', '只改本地样式，不向 AI 发送任何指令') +
+        this.sw('latexRender', 'LaTeX 公式渲染', '离线 KaTeX，渲染 \\( \\)、\\[ \\]、$ 公式') +
         this.sw('timeInject', '隐式时间注入') +
         '<div class="dse-p-sec">本会话上下文用量</div>' +
         '<div class="dse-ctx"><div class="dse-ctx-track"><div class="dse-ctx-fill" data-ctx-fill></div></div>' +
@@ -214,7 +217,7 @@ var Panel = {
       '约 ' + k(u.used) + ' / ' + k(u.limit) + (u.source === 'estimate' ? '（估算）' : '') + (u.pct >= 75 ? '（建议新对话）' : '');
     this.el.querySelector('[data-ctx-pct]').textContent = u.pct + '%';
     var hist = DSE.modules.antiRecall.getHistory(Utils.currentSid());
-    var recalled = hist.filter(function (h) { return h.recalled && !h.serverHas; }).length;
+    var recalled = hist.filter(function (h) { return h.recalled && !h.serverHas && !h.backfilled; }).length;
     var info = this.el.querySelector('[data-hist-info]');
     if (info) info.textContent = '本地记录 ' + hist.length + ' 条' + (recalled ? '，待回填撤回 ' + recalled + ' 条' : '');
   },

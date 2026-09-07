@@ -14,7 +14,8 @@ var DEFAULT_CONFIG = {
   bubblePreset: 'water',                 // default / frosted / water
   inputFrosted: true,                    // 输入框悬浮磨砂玻璃
   zoom: 100,
-  fixTopbar: true,                       // 修复移动版顶栏分享按钮背景不一致
+  fixTopbar: true,                       // 顶栏统一开关
+  topbarStyle: 'frosted',                // frosted=磨砂统一 / transparent=背景直接透出
   hideDownloadApp: true,                 // 仅隐藏欢迎页“下载应用”（保留其它按钮）
   navButtons: true,                      // 消息上下导航
   fullscreenBtn: true,
@@ -23,6 +24,7 @@ var DEFAULT_CONFIG = {
   thinkAutoCollapse: true,               // 思考区自动折叠（默认折叠）
   hideAiBadge: true,                     // 隐藏“内容由 AI 生成”等标识
   markdownPretty: true,                  // 仅本地美化官网 markdown 渲染，不向 AI 发任何指令
+  latexRender: true,                     // KaTeX 公式渲染（官网默认不渲染 \( \)/\[ \]/$...$）
   timeInject: false,                     // 时间注入
   ctxLimitTokens: 128000,                // 上下文上限：快速模式 128K；专家模式可调到 1M
 

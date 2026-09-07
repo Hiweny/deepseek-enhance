@@ -9,6 +9,7 @@
     'background',
     'think',
     'bubbles',
+    'latex',
     'tweaks',
     'context',
     'nav',

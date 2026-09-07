@@ -48,7 +48,8 @@ var AntiRecall = {
     if (DSE.config.get('privacyMode') !== 'smart') return [];
     var h = this.getHistory(sid), rounds = [];
     for (var i = 0; i < h.length; i++) {
-      if (h[i].role === 'assistant' && h[i].recalled && !h[i].serverHas) {
+      // serverHas：重载历史时服务端已承载；backfilled：已随某次请求发出、服务端上下文已吃下
+      if (h[i].role === 'assistant' && h[i].recalled && !h[i].serverHas && !h[i].backfilled) {
         var user = null;
         for (var j = i - 1; j >= 0; j--) if (h[j].role === 'user') { user = h[j]; break; }
         rounds.push({ user: user, assistant: h[i] });
@@ -258,8 +259,24 @@ var AntiRecall = {
 
       // 流结束落库本轮 AI 回复（撤回时用 preCheck 保存的真实内容）
       if (isGen) {
+        // 请求真正发出后（net 的请求改写管线已同步跑完），快照本次带上的待回填轮次
+        var retSend = _origSend.apply(this, arguments);
+        var injectedTs = [];
+        try {
+          injectedTs = AR.pendingRecalledRounds(sid).map(function (r) { return r.assistant.ts; });
+        } catch (e) {}
         xhr.addEventListener('load', function () {
           try {
+            if (xhr.status && xhr.status !== 200) return; // 异常响应不视为已承载
+            // 服务端已接收包含这些旧撤回内容的上下文 → 标记已回填，后续请求不再重复注入
+            if (injectedTs.length) {
+              var hh = AR.getHistory(sid), changed = false;
+              hh.forEach(function (item) {
+                if (item.role === 'assistant' && item.recalled && !item.backfilled &&
+                    injectedTs.indexOf(item.ts) !== -1) { item.backfilled = true; changed = true; }
+              });
+              if (changed) DSE.config.saveSessions();
+            }
             var content = state.content();
             if (content) {
               AR.pushHistory(sid, { role: 'assistant', content: content, ts: Date.now(), recalled: state.recalled });
@@ -269,6 +286,7 @@ var AntiRecall = {
             }
           } catch (e) {}
         });
+        return retSend;
       }
       return _origSend.apply(this, arguments);
     };

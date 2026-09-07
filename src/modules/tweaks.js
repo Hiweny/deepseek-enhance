@@ -9,6 +9,8 @@ var Tweaks = {
     document.body.classList.toggle('dse-hide-badge', !!c.get('hideAiBadge'));
     document.body.classList.toggle('dse-input-frosted', !!c.get('inputFrosted'));
     document.body.classList.toggle('dse-fix-topbar', !!c.get('fixTopbar'));
+    document.body.classList.toggle('dse-topbar-frosted', !!c.get('fixTopbar') && c.get('topbarStyle') !== 'transparent');
+    document.body.classList.toggle('dse-topbar-transparent', !!c.get('fixTopbar') && c.get('topbarStyle') === 'transparent');
     document.body.classList.toggle('dse-md-pretty', !!c.get('markdownPretty'));
   },
   // 精确命中“下载应用”：只标记最小命中元素，绝不标记 .the-header / 按钮容器

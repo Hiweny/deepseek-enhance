@@ -21,13 +21,19 @@ Bridge.addStyle(`
 body.dse-hide-badge ._0fcaa63{display:none!important}
 
 /* ===== 顶栏统一：标题/分享是两个独立 .the-header，共同容器 ._2be88ba =====
-   只给共同容器一条完整磨砂，两个子 header 全透明 → 不再有“分享按钮单独底色/标题黑条” */
-body.dse-fix-topbar ._2be88ba{background:var(--dse-frost-strong)!important;
+   两种风格（dse-topbar-frosted 磨砂 / dse-topbar-transparent 背景直接透出），
+   两个子 header 始终全透明，避免“分享按钮单独底色/标题黑条”，按钮本身不受影响 */
+body.dse-topbar-frosted ._2be88ba{background:var(--dse-frost-strong)!important;
   backdrop-filter:blur(20px) saturate(160%);-webkit-backdrop-filter:blur(20px) saturate(160%)}
-body.dse-fix-topbar .the-header{background:transparent!important;
+body.dse-topbar-transparent ._2be88ba{background:transparent!important;
+  backdrop-filter:none!important;-webkit-backdrop-filter:none!important}
+body.dse-topbar-frosted .the-header,body.dse-topbar-transparent .the-header{background:transparent!important;
   backdrop-filter:none!important;-webkit-backdrop-filter:none!important;
   border-radius:0!important;box-shadow:none!important}
-body.dse-fix-topbar .the-header .ds-button__background{background:transparent!important}
+body.dse-topbar-frosted .the-header .ds-button__background,
+body.dse-topbar-transparent .the-header .ds-button__background{background:transparent!important}
+/* 透明风格下只清结构层底色，绝不动按钮自身背景 */
+body.dse-topbar-transparent ._2be88ba>*:not(.ds-button):not([class*="ds-button"]){background-color:transparent!important}
 
 /* 自定义背景下：消除输入框下方白色/黑色条带与渐隐区 */
 body.dse-has-bg .c99b79f8{background:transparent!important}
@@ -48,5 +54,8 @@ body.dse-input-frosted ._77cefa5:focus-within{border-color:var(--dse-accent)!imp
 body.dse-input-frosted textarea{background:transparent!important}
 @media (max-width:640px){
   body.dse-input-frosted ._77cefa5{border-radius:20px!important}
+  /* 输入框与屏幕底部保持间距（含手势条安全区），间隙由固定背景层透出，不会出现黑条 */
+  body.dse-input-frosted ._77cefa5{margin-bottom:max(12px,env(safe-area-inset-bottom))!important}
+  body.dse-input-frosted ._871cbca,body.dse-input-frosted .aaff8b8f{background:transparent!important}
 }
 `);

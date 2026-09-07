@@ -7,21 +7,25 @@ const ROOT = __dirname;
 const SRC = path.join(ROOT, 'src');
 const read = (p) => fs.readFileSync(path.join(SRC, p), 'utf8');
 
+// vendor（KaTeX 离线 bundle）在 bootstrap 之后、业务模块之前拼接
+const VENDOR = ['vendor/katex.bundle.js'];
 const ORDER = [
   ['bootstrap.js'],
   ['core/config.js'], ['core/selectors.js'], ['core/utils.js'], ['core/net.js'],
   ['styles/base.css.js'], ['styles/bubbles.css.js'], ['styles/markdown.css.js'],
   ['styles/tweaks.css.js'], ['styles/panel.css.js'],
   ['modules/background.js'], ['modules/antirecall.js'], ['modules/prompt.js'],
-  ['modules/think.js'], ['modules/bubbles.js'], ['modules/tweaks.js'],
+  ['modules/think.js'], ['modules/bubbles.js'], ['modules/latex.js'], ['modules/tweaks.js'],
   ['modules/context.js'], ['modules/nav.js'], ['modules/zoom.js'],
   ['modules/buttons.js'],
   ['settings/panel.js'],
   ['main.js'], ['footer.js']
 ].map((x) => x[0]);
 
+const readVendor = (p) => fs.readFileSync(path.join(ROOT, p), 'utf8');
 const header = read('header.user.js').trim();
-const body = ORDER.map((f) => '\n/* ===== ' + f + ' ===== */\n' + read(f).trim()).join('\n');
+const vendorBody = VENDOR.map((f) => '\n/* ===== vendor: ' + f + ' ===== */\n' + readVendor(f).trim()).join('\n');
+const body = vendorBody + '\n' + ORDER.map((f) => '\n/* ===== ' + f + ' ===== */\n' + read(f).trim()).join('\n');
 
 const userJs = header + '\n' + body + '\n';
 const meta = header.split('\n').filter((l) => l.startsWith('// ==UserScript==') ||
