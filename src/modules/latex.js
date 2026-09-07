@@ -99,14 +99,26 @@ var Latex = {
     Utils.onReady(function () {
       self.injectCss();
       self.renderAll();
+      var touch = function (host) {
+        if (!host || host.nodeType !== 1 || !host.closest || host.closest('.katex')) return;
+        var md = host.closest('.ds-markdown');
+        if (md) self.schedule(md);
+      };
       var mo = new MutationObserver(function (muts) {
         if (!DSE.config.get('latexRender')) return;
         for (var i = 0; i < muts.length; i++) {
-          var node = muts[i].target;
-          var host = node && node.nodeType === 3 ? node.parentElement : node;
-          if (host && host.nodeType === 1 && host.closest && !host.closest('.katex')) {
-            var md = host.closest('.ds-markdown');
-            if (md) self.schedule(md);
+          var mu = muts[i];
+          if (mu.type === 'childList') {
+            // 新增的 markdown 容器（虚拟列表挂载）及其内部节点都要覆盖
+            for (var j = 0; j < mu.addedNodes.length; j++) {
+              var an = mu.addedNodes[j];
+              var ah = an && an.nodeType === 3 ? an.parentElement : an;
+              touch(ah);
+              if (ah && ah.querySelectorAll) ah.querySelectorAll('.ds-markdown').forEach(function (m) { self.schedule(m); });
+            }
+            touch(mu.target);
+          } else { // characterData：文本流式追加
+            touch(mu.target && mu.target.nodeType === 3 ? mu.target.parentElement : mu.target);
           }
         }
       });
