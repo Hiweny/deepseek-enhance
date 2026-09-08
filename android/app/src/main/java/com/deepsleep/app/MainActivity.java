@@ -10,16 +10,12 @@ import android.graphics.drawable.ColorDrawable;
 import android.net.Uri;
 import android.os.Build;
 import android.os.Bundle;
-import android.text.InputType;
 import android.view.Gravity;
 import android.view.View;
 import android.view.ViewGroup;
 import android.view.ViewTreeObserver;
 import android.view.Window;
 import android.view.WindowManager;
-import android.view.inputmethod.EditorInfo;
-import android.view.inputmethod.InputConnection;
-import android.view.inputmethod.InputConnectionWrapper;
 import android.webkit.JavascriptInterface;
 import android.webkit.PermissionRequest;
 import android.webkit.ValueCallback;
@@ -53,18 +49,20 @@ public class MainActivity extends Activity {
 
     private FrameLayout root;
     private ImageView splashLogo;
-    private DseWebView web;
+    private WebView web;
     private String injectJs;
     private ValueCallback<Uri[]> filePathCallback;
     private boolean splashCleared = false;
     private String sharedText = null;
 
-    // 键盘高度三通道：IME 动画逐帧（最顺滑）、现代 insets 终值、全局布局测量兜底
+    // 键盘三通道：IME 动画期只做 GPU 位移（不逐帧 resize，杜绝卡顿/黑缝），动画结束落一次布局；
+    // 现代 insets 与全局布局测量为无动画 ROM 兜底
     private int navBarH = 0;
     private int imePadModern = 0;
     private int imePadLegacy = 0;
-    private int imePadAnim = -1;       // >=0 表示正处于 IME 动画中，以此通道为准
-    private int appliedBottom = -1;
+    private int lastAnimH = 0;         // IME 动画最后一帧高度，onEnd 作为终值
+    private boolean imeAnimating = false;
+    private int settledMargin = 0;     // 动画结束后真正压缩 WebView 高度的 bottomMargin
     private final Rect visibleRect = new Rect();
     private final Runnable applyRunnable = this::applyTargetPadding;
 
@@ -83,8 +81,6 @@ public class MainActivity extends Activity {
         return InlineJs.fullBootstrap(isDark(), pageBgCss(), injectJs());
     }
 
-    private String clickSendJs() { return InlineJs.clickSend(); }
-
     private String injectJs() {
         if (injectJs != null) return injectJs;
         StringBuilder sb = new StringBuilder();
@@ -97,31 +93,6 @@ public class MainActivity extends Activity {
         }
         injectJs = sb.toString();
         return injectJs;
-    }
-
-    private class DseWebView extends WebView {
-        DseWebView(android.content.Context c) { super(c); }
-
-        @Override
-        public InputConnection onCreateInputConnection(EditorInfo outAttrs) {
-            InputConnection ic = super.onCreateInputConnection(outAttrs);
-            if (ic == null) return null;
-            outAttrs.inputType |= InputType.TYPE_TEXT_FLAG_MULTI_LINE;
-            outAttrs.imeOptions &= ~EditorInfo.IME_FLAG_NO_ENTER_ACTION;
-            outAttrs.imeOptions = (outAttrs.imeOptions & ~EditorInfo.IME_MASK_ACTION) | EditorInfo.IME_ACTION_SEND;
-            outAttrs.actionLabel = "发送";
-            final WebView host = this;
-            return new InputConnectionWrapper(ic, false) {
-                @Override
-                public boolean performEditorAction(int actionCode) {
-                    if (actionCode == EditorInfo.IME_ACTION_SEND) {
-                        runOnUiThread(() -> host.evaluateJavascript(clickSendJs(), null));
-                        return true;
-                    }
-                    return super.performEditorAction(actionCode);
-                }
-            };
-        }
     }
 
     private class ShareBridge {
@@ -161,7 +132,12 @@ public class MainActivity extends Activity {
         logoLp.gravity = Gravity.CENTER;
         root.addView(splashLogo, logoLp);
 
-        web = new DseWebView(this);
+        applyChromiumTuning();
+        web = new WebView(this);
+        // 渲染进程保持重要优先级，长对话滚动/输入时不被系统降频
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            web.setRendererPriorityPolicy(WebView.RENDERER_PRIORITY_IMPORTANT, true);
+        }
         web.setBackgroundColor(pageBgColor());
         web.setClipToPadding(false);
         web.addJavascriptInterface(new ShareBridge(), "DSENative");
@@ -281,22 +257,51 @@ public class MainActivity extends Activity {
     private int dp(int v) { return Math.round(v * getResources().getDisplayMetrics().density); }
 
     /**
-     * 关键：必须压缩 WebView 的【布局高度】（bottomMargin），而不是给 WebView 加 padding。
-     * Chromium WebView 内 position:fixed 的输入框停靠在自己的视口底边，padding 不会移动视口底边，
-     * 只有 View 高度真正变小，网页 visualViewport 才会收缩、fixed 输入框才会被顶到键盘上方。
+     * Chromium 引擎调优：必须在第一个 WebView 实例化之前调用。
+     * 通过反射访问 WebView 内置的 org.chromium.base.CommandLine（随 WebView provider 加载，
+     * 不在系统隐藏 API 灰名单内），打开 GPU 光栅化/零拷贝等开关；任何机型不支持都静默跳过。
      */
-    private void setWebBottomMargin(int bottom) {
-        if (web == null || appliedBottom == bottom) return;
-        appliedBottom = bottom;
+    private void applyChromiumTuning() {
+        String[] switches = {
+                "--ignore-gpu-blocklist",
+                "--enable-gpu-rasterization",
+                "--enable-zero-copy",
+                "--enable-quic",
+                "--force-gpu-mem-available-mb=512"
+        };
+        try {
+            Class<?> cmd = Class.forName("org.chromium.base.CommandLine");
+            try {
+                cmd.getMethod("init", java.io.File.class).invoke(null, (Object) null);
+            } catch (Throwable ignored) { }
+            Object instance = cmd.getMethod("getInstance").invoke(null);
+            if (instance == null) return;
+            java.lang.reflect.Method append = cmd.getMethod("appendSwitch", String.class);
+            for (String sw : switches) {
+                try { append.invoke(instance, sw); } catch (Throwable ignored) { }
+            }
+        } catch (Throwable ignored) { }
+    }
+
+    /**
+     * 动画结束后真正压缩一次 WebView【布局高度】（bottomMargin，而非 padding）：
+     * Chromium WebView 内 fixed 元素锚定自身视口底边，只有 View 高度变小，
+     * 网页 visualViewport 才收缩、fixed 输入框才稳定停在键盘上方。
+     */
+    private void setSettledMargin(int bottom) {
+        if (web == null) return;
+        settledMargin = bottom;
         ViewGroup.LayoutParams lp = web.getLayoutParams();
         if (lp instanceof FrameLayout.LayoutParams) {
             FrameLayout.LayoutParams flp = (FrameLayout.LayoutParams) lp;
-            flp.bottomMargin = bottom;
-            web.setLayoutParams(flp);
+            if (flp.bottomMargin != bottom) {
+                flp.bottomMargin = bottom;
+                web.setLayoutParams(flp);
+            }
         }
     }
 
-    /** 非动画通道去抖合并，避免一帧多次 requestLayout 造成卡顿/黑缝 */
+    /** 非动画通道去抖合并 */
     private void scheduleApply() {
         if (root == null) return;
         root.removeCallbacks(applyRunnable);
@@ -304,22 +309,38 @@ public class MainActivity extends Activity {
     }
 
     private void applyTargetPadding() {
-        if (imePadAnim >= 0) return; // 动画通道接管中
-        setWebBottomMargin(Math.max(imePadModern, imePadLegacy));
+        if (imeAnimating) return; // IME 动画期间由位移接管
+        if (web != null) web.setTranslationY(0f);
+        setSettledMargin(Math.max(imePadModern, imePadLegacy));
     }
 
     /**
-     * 键盘顶起三通道。
-     * 注意：SYSTEM_UI_FLAG_HIDE_NAVIGATION / IMMERSIVE_STICKY / FLAG_FULLSCREEN 都会让
-     * adjustResize 与 IME insets 失效（全屏 WebView 经典坑），因此这里只保留 LAYOUT_* 布局标志，
-     * 系统栏透明浮于内容之上（手势导航下等同全屏，无黑线）。
+     * 键盘三通道。核心策略：IME 动画期间【不改布局】，只用 translationY 平移 WebView
+     * （GPU 合成，丝滑且不会因逐帧 resize 露出黑缝）；动画结束同一时刻清零位移、落一次布局，
+     * 首尾位置严格相等所以无跳变。收起方向在 onStart 先放开布局、改用位移承接。
+     * 注意：绝不使用 HIDE_NAVIGATION/IMMERSIVE/FULLSCREEN（会让 IME insets 失效）。
      */
     private void setupKeyboard() {
-        // 通道一（首选）：IME 动画逐帧回调，WebView 高度与键盘严格同帧变化，
-        // 输入框贴着键盘上沿一起滑动，中间没有露出黑缝
         ViewCompat.setWindowInsetsAnimationCallback(root,
                 new WindowInsetsAnimationCompat.Callback(
                         WindowInsetsAnimationCompat.Callback.DISPATCH_MODE_STOP) {
+                    @Override
+                    public WindowInsetsAnimationCompat.BoundsCompat onStart(
+                            WindowInsetsAnimationCompat anim,
+                            WindowInsetsAnimationCompat.BoundsCompat bounds) {
+                        if ((anim.getTypeMask() & WindowInsetsCompat.Type.ime()) != 0) {
+                            imeAnimating = true;
+                            if (settledMargin > 0) {
+                                // 收起：先放开布局高度，用等值位移承接，画面不动
+                                web.setTranslationY(-settledMargin);
+                                setSettledMargin(0);
+                            } else {
+                                web.setTranslationY(0f);
+                            }
+                        }
+                        return bounds;
+                    }
+
                     @Override
                     public WindowInsetsCompat onProgress(WindowInsetsCompat insets,
                                                         java.util.List<WindowInsetsAnimationCompat> anims) {
@@ -328,8 +349,8 @@ public class MainActivity extends Activity {
                                 Insets ime = insets.getInsets(WindowInsetsCompat.Type.ime());
                                 Insets nav = insets.getInsets(WindowInsetsCompat.Type.navigationBars());
                                 navBarH = nav.bottom;
-                                imePadAnim = Math.max(0, ime.bottom - nav.bottom);
-                                setWebBottomMargin(imePadAnim);
+                                lastAnimH = Math.max(0, ime.bottom - nav.bottom);
+                                web.setTranslationY(-lastAnimH);
                             }
                         }
                         return insets;
@@ -338,12 +359,13 @@ public class MainActivity extends Activity {
                     @Override
                     public void onEnd(WindowInsetsAnimationCompat anim) {
                         if ((anim.getTypeMask() & WindowInsetsCompat.Type.ime()) != 0) {
-                            imePadAnim = -1;
-                            scheduleApply(); // 动画结束用终值校准
+                            imeAnimating = false;
+                            web.setTranslationY(0f);
+                            setSettledMargin(lastAnimH);
+                            scheduleApply();
                         }
                     }
                 });
-        // 通道二：现代 IME insets 终值（API30 原生，AndroidX 向低版本回退）
         ViewCompat.setOnApplyWindowInsetsListener(root, (v, insets) -> {
             Insets ime = insets.getInsets(WindowInsetsCompat.Type.ime());
             Insets nav = insets.getInsets(WindowInsetsCompat.Type.navigationBars());
@@ -352,7 +374,6 @@ public class MainActivity extends Activity {
             scheduleApply();
             return insets;
         });
-        // 通道三：全局布局可见区域测量（SoftInputAssist 原理，ROM 阉割 insets/动画时兜底）
         root.getViewTreeObserver().addOnGlobalLayoutListener(new ViewTreeObserver.OnGlobalLayoutListener() {
             @Override
             public void onGlobalLayout() {

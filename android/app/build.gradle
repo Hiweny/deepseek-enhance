@@ -10,8 +10,8 @@ android {
         applicationId "com.deepsleep.app"
         minSdk 24
         targetSdk 34
-        versionCode 8
-        versionName "8.3.5"
+        versionCode 9
+        versionName "8.3.6"
     }
 
     buildTypes {

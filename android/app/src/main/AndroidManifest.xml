@@ -17,6 +17,7 @@
         android:label="@string/app_name"
         android:supportsRtl="true"
         android:usesCleartextTraffic="false"
+        android:largeHeap="true"
         android:hardwareAccelerated="true"
         android:theme="@style/Theme.DeepSleep">
 
