@@ -25,9 +25,28 @@ final class InlineJs {
                 + "dseFpObs.observe(document.documentElement,{childList:true,subtree:true,attributes:true,attributeFilter:['class']});"
                 + "setTimeout(function(){try{dseFpObs.disconnect();}catch(e){}var e=document.getElementById('__dse_firstpaint');if(e)e.remove();},6000);}"
                 + "}catch(e){}"
-                // APK 专属出厂默认（仅首次写入，不影响油猴脚本）
-                + "try{if(!localStorage.getItem('dse_config_v1')){"
-                + "localStorage.setItem('dse_config_v1',JSON.stringify({topbarStyle:'transparent',fullscreenBtn:false,timeInject:true}));}}catch(e){}"
+                // APK 专属出厂默认：版本化迁移，只强制一次（老版本装过也会纠正），之后用户自改不覆盖
+                + "try{var DMK='dse_apk_def_v2';"
+                + "if(!localStorage.getItem(DMK)){"
+                + "var dc=JSON.parse(localStorage.getItem('dse_config_v1')||'{}');"
+                + "dc.fixTopbar=true;dc.topbarStyle='transparent';dc.fullscreenBtn=false;dc.timeInject=true;"
+                + "localStorage.setItem('dse_config_v1',JSON.stringify(dc));"
+                + "localStorage.setItem(DMK,'1');}}catch(e){}"
+                // 键盘弹起 WebView 收缩时，把背景层钉在“键盘收起时的大视口高度”，
+                // 避免 background-size:cover 随视口逐帧重算造成的背景缩放闪烁；同时去掉常驻 will-change 省 GPU
+                + "(function(){"
+                + "var st=document.createElement('style');st.id='__dse_apk_css';"
+                + "st.textContent='#dse-bg-layer,#dse-bg-mask{inset:auto 0 auto 0!important;top:0!important;height:var(--dse-stable-h,100vh)!important;will-change:auto!important}';"
+                + "var stableH=window.innerHeight||window.screen.height||800;"
+                + "function dseSyncH(){var h=window.visualViewport?window.visualViewport.height:window.innerHeight;"
+                // 只在视口变大（键盘收起/旋转完成）时更新基准；键盘弹起变小则保持，背景不动
+                + "if(h>=stableH-2)stableH=h;"
+                + "var de=document.documentElement;if(de)de.style.setProperty('--dse-stable-h',stableH+'px');}"
+                + "if(window.visualViewport)window.visualViewport.addEventListener('resize',dseSyncH);"
+                + "window.addEventListener('resize',dseSyncH);window.addEventListener('orientationchange',function(){setTimeout(dseSyncH,300)});"
+                // document-start 极早期 head/documentElement 可能尚未建立，轮询挂载
+                + "(function mount(){var p=document.head||document.documentElement;if(!p){setTimeout(mount,4);return;}p.appendChild(st);dseSyncH();})();"
+                + "})();"
                 // 主题跟随系统
                 + "try{var KEY='__appKit_@deepseek/chat_themePreference';"
                 + "function dseApplyTheme(){localStorage.setItem(KEY,JSON.stringify({value:'" + (dark ? "dark" : "light") + "',__version:'0'}));}"
