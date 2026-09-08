@@ -37,15 +37,17 @@ final class InlineJs {
                 + "(function(){"
                 + "var st=document.createElement('style');st.id='__dse_apk_css';"
                 + "st.textContent='#dse-bg-layer,#dse-bg-mask{inset:auto 0 auto 0!important;top:0!important;height:var(--dse-stable-h,100vh)!important;will-change:auto!important}';"
-                + "var stableH=window.innerHeight||window.screen.height||800;"
-                + "function dseSyncH(){var h=window.visualViewport?window.visualViewport.height:window.innerHeight;"
-                // 只在视口变大（键盘收起/旋转完成）时更新基准；键盘弹起变小则保持，背景不动
-                + "if(h>=stableH-2)stableH=h;"
+                + "var stableH=0;"
+                + "function dseSyncH(force){var h=window.visualViewport?window.visualViewport.height:window.innerHeight;"
+                // 常规：只在视口变大（键盘收起）时更新基准，键盘弹起变小则保持，背景不动；
+                // force 仅来自初始沉降与 orientationchange（旋屏），避免把大键盘误判成旋屏
+                + "if(force||!stableH||h>=stableH-2)stableH=h;"
                 + "var de=document.documentElement;if(de)de.style.setProperty('--dse-stable-h',stableH+'px');}"
-                + "if(window.visualViewport)window.visualViewport.addEventListener('resize',dseSyncH);"
-                + "window.addEventListener('resize',dseSyncH);window.addEventListener('orientationchange',function(){setTimeout(dseSyncH,300)});"
-                // document-start 极早期 head/documentElement 可能尚未建立，轮询挂载
-                + "(function mount(){var p=document.head||document.documentElement;if(!p){setTimeout(mount,4);return;}p.appendChild(st);dseSyncH();})();"
+                + "if(window.visualViewport)window.visualViewport.addEventListener('resize',function(){dseSyncH(false)});"
+                + "window.addEventListener('resize',function(){dseSyncH(false)});"
+                + "window.addEventListener('orientationchange',function(){setTimeout(function(){dseSyncH(true)},350)});"
+                // document-start 极早期 head/documentElement 可能尚未建立，轮询挂载；400ms 后视口沉降再校准一次
+                + "(function mount(){var p=document.head||document.documentElement;if(!p){setTimeout(mount,4);return;}p.appendChild(st);dseSyncH(false);setTimeout(function(){dseSyncH(true)},400);})();"
                 + "})();"
                 // 主题跟随系统
                 + "try{var KEY='__appKit_@deepseek/chat_themePreference';"
