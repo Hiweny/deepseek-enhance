@@ -68,9 +68,9 @@ var Context = {
   // 主动重新统计：拉一次当前会话的 history_messages（与官网同接口），实时重算
   recompute: function () {
     var self = this, sid = Utils.currentSid();
-    if (!sid) { Utils.toast('请先进入一个对话'); return Promise.resolve(); }
+    if (!sid) { Utils.toast(DSE.t('请先进入一个对话')); return Promise.resolve(); }
     if (this.busy) return Promise.resolve();
-    this.busy = true; Utils.toast('正在重新统计…');
+    this.busy = true; Utils.toast(DSE.t('正在重新统计…'));
     return fetch('/api/v0/chat/history_messages?chat_session_id=' + encodeURIComponent(sid), {
       method: 'GET', credentials: 'include', headers: { 'Accept': 'application/json' }
     }).then(function (r) { return r.text(); }).then(function (txt) {

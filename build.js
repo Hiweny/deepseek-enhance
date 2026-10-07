@@ -11,12 +11,13 @@ const read = (p) => fs.readFileSync(path.join(SRC, p), 'utf8');
 const VENDOR = ['vendor/katex.bundle.js'];
 const ORDER = [
   ['bootstrap.js'],
-  ['core/config.js'], ['core/selectors.js'], ['core/utils.js'], ['core/net.js'],
+  ['core/config.js'], ['core/selectors.js'], ['core/utils.js'], ['core/i18n.js'], ['core/net.js'],
   ['styles/base.css.js'], ['styles/bubbles.css.js'], ['styles/markdown.css.js'],
   ['styles/tweaks.css.js'], ['styles/panel.css.js'],
   ['modules/background.js'], ['modules/antirecall.js'], ['modules/prompt.js'],
   ['modules/think.js'], ['modules/bubbles.js'], ['modules/latex.js'], ['modules/tweaks.js'],
   ['modules/context.js'], ['modules/nav.js'], ['modules/zoom.js'],
+  ['modules/fold.js'],
   ['modules/buttons.js'],
   ['settings/panel.js'],
   ['main.js'], ['footer.js']

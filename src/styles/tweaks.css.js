@@ -15,6 +15,11 @@ Bridge.addStyle(`
 ._74c0879 .ds-think-content{background:transparent!important;padding:4px 6px 8px!important}
 ._74c0879 .ds-think-content *{background:transparent!important}
 
+/* ===== 思考区 CSS 折叠（见 modules/think.js）=====
+   只隐藏正文，不点击、不移动站点节点 → 长对话滚动不再因高度突变而跳动 */
+body.dse-think-collapse ._74c0879:not(.dse-think-open) .ds-think-content{display:none!important}
+body.dse-think-collapse ._74c0879:not(.dse-think-open) ._3d79d66{transform:rotate(-90deg)}
+
 /* 通用隐藏标记（移动版下载应用/AI 标识等由 JS 命中后打上） */
 [data-dse-hide]{display:none!important}
 /* 隐藏底部“内容由 AI 生成，请仔细甄别” */

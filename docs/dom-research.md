@@ -96,3 +96,34 @@
 - **欢迎页“下载应用”精确定位**：按钮本体容器 `._9579690`（文本恰为“下载应用”），它与「新对话」iconLabelPrimary 胶囊同处 `._1aa2651.the-header`；**只隐藏 `._9579690`，绝不能给 `.the-header` 整体打隐藏标记**（旧版误伤导致新建对话/侧栏按钮一起消失）。
 - **SSE 增量解析**：响应改写会改变文本长度，事件解析游标必须按【原始 raw 长度】推进；防撤回转换器自行维护“持久行数组 + 已处理行数”，且 XHR responseText 会被站点重复读取，撤回发生后每次读取都要用持久行数组重建，不能提前 return 原文。
 - **token 用量**：`accumulated_token_usage` 是服务端按整轮上下文累计的值，直接取会话级最大值，禁止逐轮相加；路径式 op `response/accumulated_token_usage` 也要识别。
+
+## 9. v8.4 补充实测（2026-10-07，真实登录实测）
+
+### 9.1 消息区真正的滚动容器（关键）
+- 消息区是**内层滚动**，`window` 不滚动（`document.documentElement.scrollHeight == clientHeight`）。
+- 真正的滚动容器：`.ds-virtual-list.ds-virtual-list--printable.ds-scroll-area`（`overflow-y:auto`，承载 `scrollTop/scrollHeight`）。
+  结构：`.ds-virtual-list > .ds-virtual-list-items._6f2c522 > .ds-virtual-list-visible-items > .ds-message`。
+  `items` 层高度 = 全部消息总高（虚拟列表用占位撑开），`visible-items` 只放已挂载的消息。
+- **教训**：任何“滚动到某条消息”都必须操作这个容器；用 `window.scrollY / scrollTo` 一律无效（旧消息导航即因此定位错乱）。
+
+### 9.2 长对话“向上滚动乱跳 / 冲到开头”的根因与修复
+- 实测（68 条消息的长会话，向上滚 30 步）：原生最大反向上跳 ≈1140px；**加载旧版脚本后 ≈7359px**（甚至一步从 6424 跳到 15029）。
+- 二分定位：把 `net/antiRecall/prompt` 保留、其余全关 → 无大跳；**加入 `think` 模块后立刻大跳**。
+- 根因：旧 `think` 自动折叠是**对折叠头派发真实点击**，站点会把 `.ds-think-content` 从 DOM 移除；在虚拟列表里，消息被重挂载时会再次渲染出思考正文、脚本又点一次 → 消息高度反复突变 → 虚拟列表重算 → 滚动位置乱跳。
+- 修复：折叠改为**纯 CSS**（`body.dse-think-collapse ._74c0879:not(.dse-think-open) .ds-think-content{display:none}`），不点击、不改 DOM；用户点击折叠头时接管为切换 `.dse-think-open` 类（阻止站点移除节点），若该块已无 `.ds-think-content` 则交回站点原生展开。
+- 效果：同一测试 maxUp 从 ≈7359 降到 **≈735**（与原生同量级）。
+
+### 9.3 代码块原生结构（用于自动折叠）
+```
+.ds-markdown.ds-assistant-message-main-content
+└─ .md-code-block.md-code-block-light（暗色为 md-code-block-dark）
+   ├─ .md-code-block-banner-wrap     ← 语言标签 + 「复制」「下载」（原生按钮，勿动）
+   ├─ PRE（line-height 22px、padding 16px；每一行是一个直接子 <span>，行间以 \n 文本节点分隔）
+   └─ svg ×2（装饰）
+```
+- 折叠实现：只给 `pre` 设 `max-height = 行数×lineHeight + paddingTop + paddingBottom`、`overflow-y:hidden`，并在 `.md-code-block` 末尾追加一个自建「展开」条（`.dse-code-fold`）。不移动/包裹任何站点节点，原生复制/下载按钮不受影响。
+- 折叠条背景取 `pre` 的计算背景色做同色融合，深浅自适应；`svg` 需 `!important` 定尺寸（站点会把它撑满）。
+
+### 9.4 其它
+- 页面缩放走 `document.documentElement.style.zoom`，>100% 会把设置面板一起放大到屏幕外 → 上限收敛为 100%。
+- 设置面板需按语言重渲染：语言存 `dse_config_v1.lang`（auto/zh/en）。

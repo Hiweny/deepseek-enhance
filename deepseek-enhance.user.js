@@ -2,8 +2,8 @@
 // @name         DeepSeek Enhance 深度增强
 // @name:en      DeepSeek Enhance
 // @namespace    https://github.com/Hiweny/deepseek-enhance
-// @version      8.3.0
-// @description  水玻璃气泡/思考自动折叠/Markdown本地美化/图片URL背景/按会话隔离的系统提示词/防撤回(连续撤回回填·重载对账)/上下文用量/输入框磨砂/顶栏修复/移动端适配
+// @version      8.4.0
+// @description  水玻璃气泡/思考自动折叠/代码块自动折叠/中英文界面/Markdown本地美化/图片URL背景/按会话隔离的系统提示词/防撤回(连续撤回回填·重载对账)/上下文用量/消息导航(虚拟列表适配)/输入框磨砂/顶栏修复/移动端适配
 // @updateURL    https://raw.githubusercontent.com/Hiweny/deepseek-enhance/main/deepseek-enhance.meta.js
 // @downloadURL  https://raw.githubusercontent.com/Hiweny/deepseek-enhance/main/deepseek-enhance.user.js
 // @author       Hiweny
@@ -94,7 +94,7 @@ var Bridge = {
 
 /* ---------- 全局命名空间 + 极简事件总线 ---------- */
 var DSE = window.DSE = {
-  version: '8.3.0',
+  version: '8.4.0',
   runtime: HAS_GM ? 'tampermonkey' : 'inject',
   bridge: Bridge,
   modules: {},
@@ -120,7 +120,7 @@ DSE.log = function () {
 var CFG_KEY = 'dse_config_v1';
 var SESS_KEY = 'dse_sessions_v1';
 
-var DEFAULT_BG = 'https://s41.ax1x.com/2026/09/04/pnkaWjK.png';
+var DEFAULT_BG = 'https://piv.cc.cd/file/BQACAgUAAyEGAASLVN5eAAJycmrFsEF_gBAEksOkBJck6n9y6IK2AALKIAAC1YYwVs2Pus_QNfIXPQQ.jpg';
 
 // 出厂默认 = 正常 AI 助手
 var DEFAULT_CONFIG = {
@@ -137,6 +137,8 @@ var DEFAULT_CONFIG = {
 
   // 对话
   thinkAutoCollapse: true,               // 思考区自动折叠（默认折叠）
+  codeFold: true,                        // 代码块超行数自动折叠
+  codeFoldLines: 10,                     // 代码块默认显示行数
   hideAiBadge: true,                     // 隐藏“内容由 AI 生成”等标识
   markdownPretty: true,                  // 仅本地美化官网 markdown 渲染，不向 AI 发任何指令
   latexRender: true,                     // KaTeX 公式渲染（官网默认不渲染 \( \)/\[ \]/$...$）
@@ -354,6 +356,142 @@ var Utils = {
 };
 DSE.utils = Utils;
 DSE.register('utils', Utils);
+
+/* ===== core/i18n.js ===== */
+/* ============================================================
+ * core/i18n：界面中英文（以中文字符串为 key，缺省回退中文）
+ *  - lang = auto：按 navigator.language 自动判定（zh* → 中文，其余 → English）
+ *  - lang = zh / en：手动覆盖
+ *  - 只做中英文；未收录的 key 原样返回中文，保证不出现空串
+ * ============================================================ */
+var I18N = {
+  dict: {
+    // ---------- 通用 ----------
+    '外观': 'Appearance',
+    '对话': 'Chat',
+    '提示词': 'Prompt',
+    '其他': 'More',
+    '界面': 'Interface',
+    '关于': 'About',
+    '上传': 'Upload',
+    '默认图': 'Default',
+    '关闭背景': 'Disable',
+    '模糊': 'Blur',
+    '亮度': 'Brightness',
+    '页面缩放': 'Page zoom',
+    '恢复默认': 'Reset',
+    '展开': 'Expand',
+    '收起': 'Collapse',
+
+    // ---------- 外观 ----------
+    '背景图片': 'Background image',
+    '图片 URL，留空用默认图': 'Image URL, leave empty for default',
+    '气泡材质': 'Bubble style',
+    '默认': 'Default',
+    '清爽浅色气泡': 'Clean light bubbles',
+    'iOS 磨砂': 'iOS Frosted',
+    '高饱和毛玻璃': 'High-saturation blur',
+    '水玻璃': 'Aqua glass',
+    '通透高光（推荐）': 'Translucent highlight (recommended)',
+    '输入框悬浮磨砂': 'Floating frosted input',
+    '统一顶栏': 'Unified top bar',
+    '消除分享按钮单独底色/标题黑条': 'Remove the share-button patch and title bar',
+    '磨砂': 'Frosted',
+    '背景透出': 'Transparent',
+    '隐藏“下载应用”': 'Hide "Download app"',
+    '仅欢迎页，不影响新建对话/侧栏按钮': 'Welcome page only; keeps other buttons',
+
+    // ---------- 对话 ----------
+    '消息呈现': 'Messages',
+    '思考区自动折叠': 'Auto-collapse thinking',
+    '默认收起 DeepSeek 思考过程': 'Collapse DeepSeek reasoning by default',
+    '代码块自动折叠': 'Auto-collapse code blocks',
+    '超过设定行数自动收起，点击展开': 'Collapse when longer than the limit; click to expand',
+    '代码块显示行数': 'Code lines shown',
+    '隐藏 AI 生成标识': 'Hide AI notice',
+    '底部“内容由 AI 生成”等': 'The "AI-generated" notice at the bottom',
+    'Markdown 排版美化': 'Markdown styling',
+    '只改本地样式，不向 AI 发送任何指令': 'Local styling only; sends nothing to the AI',
+    'LaTeX 公式渲染': 'LaTeX rendering',
+    '离线 KaTeX，渲染 \\( \\)、\\[ \\]、$ 公式': 'Offline KaTeX for \\( \\), \\[ \\], $ formulas',
+    '隐式时间注入': 'Implicit time injection',
+    '本会话上下文用量': 'Session context usage',
+    '上下文上限': 'Context limit',
+    '快速模式约 128K，专家模式(V3.2/V4)约 1M，按所用模型调整。': 'About 128K for fast mode, about 1M for expert (V3.2/V4). Adjust to your model.',
+    '立即重新统计（拉取本会话历史）': 'Recount now (fetch this session history)',
+    '约': 'About',
+    '（估算）': ' (estimated)',
+    '（建议新对话）': ' (start a new chat)',
+
+    // ---------- 提示词 ----------
+    '本会话系统提示词': 'Session system prompt',
+    '只对当前这一个会话生效；切换到其它会话互不影响、互不可见。': 'Applies to this session only; each session is independent and private.',
+    '启用本会话系统提示词': 'Enable session system prompt',
+    '写给当前会话 AI 的系统设定…': 'System setup for this session\'s AI…',
+    '高级：实际注入内容预览 / 模板': 'Advanced: injected preview / templates',
+    '撤回后简短回应（模板，可编辑）': 'Brief reply after recall (editable template)',
+    '预览实际注入': 'Preview injection',
+
+    // ---------- 其他 ----------
+    '防撤回 / 隐私': 'Anti-recall / Privacy',
+    '关闭': 'Off',
+    '智能': 'Smart',
+    '全量': 'Full',
+    '智能：连续撤回连续补回；服务端重载上下文后只补最新缺失轮次。全量：每次发送都拼接本地历史。': 'Smart: refill recalled rounds continuously; after the server reloads context only the latest missing round is refilled. Full: attach local history to every message.',
+    '撤回后提示 AI 简短回应': 'Ask AI for a brief reply after recall',
+    '降低再次撤回概率与 prompt 压力': 'Lower re-recall risk and prompt load',
+    '全量历史条数': 'History messages (full mode)',
+    '清除本会话本地历史': 'Clear local history for this session',
+    '便捷功能': 'Shortcuts',
+    '消息上下导航按钮': 'Message navigation buttons',
+    '一键全屏按钮': 'Fullscreen button',
+    '语言': 'Language',
+    '自动': 'Auto',
+    '中文': '中文',
+    '界面语言（跟随系统 / 中文 / English）': 'Interface language (system / Chinese / English)',
+    '本地记录 {n} 条': 'Local records: {n}',
+    '，待回填撤回 {n} 条': ', to refill {n}',
+
+    // ---------- 按钮 title / toast ----------
+    '上一条消息': 'Previous message',
+    '下一条消息': 'Next message',
+    '一键全屏': 'Fullscreen',
+    'DeepSeek Enhance 设置': 'DeepSeek Enhance settings',
+    '图片不要超过 8MB': 'Image must be under 8MB',
+    '请先进入一个对话': 'Open a conversation first',
+    '正在重新统计…': 'Recounting…',
+    '统计完成：约': 'Done: about ',
+    'tokens': 'tokens',
+    '统计失败（可能需要联网）': 'Failed (network required?)',
+    '已拦截一次撤回，真实内容已本地保留': 'Recall intercepted; content kept locally',
+
+    // ---------- 关于 ----------
+    'about.text': 'DeepSeek Enhance v{v} · everything runs locally, no data uploaded<br>Selector archive: docs/dom-research.md.'
+  },
+  _lang: null,
+  resolve: function () {
+    var pref = (DSE.config && DSE.config.get('lang')) || 'auto';
+    if (pref === 'zh' || pref === 'en') return pref;
+    var nav = String((navigator.language || navigator.userLanguage || 'en')).toLowerCase();
+    return nav.indexOf('zh') === 0 ? 'zh' : 'en';
+  },
+  lang: function () { if (!this._lang) this._lang = this.resolve(); return this._lang; },
+  refresh: function () { this._lang = this.resolve(); return this._lang; },
+  t: function (key, params) {
+    var l = this.lang();
+    var d = this.dict;
+    var s;
+    if (l === 'en' && typeof d[key] === 'string') s = d[key];
+    else s = key;
+    if (params) {
+      s = s.replace(/\{(\w+)\}/g, function (m, k) { return (params[k] != null ? params[k] : m); });
+    }
+    return s;
+  }
+};
+DSE.i18n = I18N;
+DSE.t = function (k, p) { return I18N.t(k, p); };
+DSE.register('i18n', I18N);
 
 /* ===== core/net.js ===== */
 /* ============================================================
@@ -690,6 +828,11 @@ Bridge.addStyle(`
 ._74c0879 .ds-think-content{background:transparent!important;padding:4px 6px 8px!important}
 ._74c0879 .ds-think-content *{background:transparent!important}
 
+/* ===== 思考区 CSS 折叠（见 modules/think.js）=====
+   只隐藏正文，不点击、不移动站点节点 → 长对话滚动不再因高度突变而跳动 */
+body.dse-think-collapse ._74c0879:not(.dse-think-open) .ds-think-content{display:none!important}
+body.dse-think-collapse ._74c0879:not(.dse-think-open) ._3d79d66{transform:rotate(-90deg)}
+
 /* 通用隐藏标记（移动版下载应用/AI 标识等由 JS 命中后打上） */
 [data-dse-hide]{display:none!important}
 /* 隐藏底部“内容由 AI 生成，请仔细甄别” */
@@ -855,7 +998,7 @@ var Background = {
   },
   uploadFile: function (file, cb) {
     if (!file) return;
-    if (file.size > 8 * 1024 * 1024) { Utils.toast('图片不要超过 8MB'); return; }
+    if (file.size > 8 * 1024 * 1024) { Utils.toast(DSE.t('图片不要超过 8MB')); return; }
     var reader = new FileReader();
     reader.onload = function (ev) {
       DSE.config.set('bg.upload', ev.target.result);
@@ -1154,7 +1297,7 @@ var AntiRecall = {
             if (content) {
               AR.pushHistory(sid, { role: 'assistant', content: content, ts: Date.now(), recalled: state.recalled });
               if (state.recalled && DSE.config.get('privacyMode') === 'smart') {
-                setTimeout(function () { Utils.toast('已拦截一次撤回，真实内容已本地保留'); }, 400);
+                setTimeout(function () { Utils.toast(DSE.t('已拦截一次撤回，真实内容已本地保留')); }, 400);
               }
             }
           } catch (e) {}
@@ -1274,44 +1417,47 @@ DSE.modules.prompt = Prompt;
 
 /* ===== modules/think.js ===== */
 /* ============================================================
- * modules/think：思考区自动折叠
- *  实测：折叠 = 站点移除 .ds-think-content；展开 = 插回。
- *  故“已展开”判据为内容节点存在；用户手动展开过的块不再自动收起。
+ * modules/think：思考区自动折叠（CSS 折叠版，issue #3 关键修复）
+ *
+ * 旧实现：对折叠头派发真实点击 → 站点把 .ds-think-content 从 DOM 移除。
+ * 在长对话里这会改变消息高度，虚拟列表在向上滚动、重挂载消息时反复重算，
+ * 导致“消息来回跳 / 一下冲到最开头”。实测：点击折叠 maxUp≈7359，纯 CSS 折叠≈735。
+ *
+ * 新实现：只给 body 加一个类，用 CSS 隐藏 .ds-think-content ——
+ * 不点击、不改 DOM 结构，高度变化发生在挂载瞬间且稳定，虚拟列表不再乱跳。
+ * 用户点击折叠头时接管为“切换 .dse-think-open 类”的显隐开关（阻止站点移除节点）；
+ * 若该块当前没有 .ds-think-content（站点已折叠），则不接管，交回站点原生展开。
  * ============================================================ */
 var Think = {
-  userTouched: new WeakSet(),
-  rafQ: false,
-  collapseOne: function (block) {
-    if (!DSE.config.get('thinkAutoCollapse')) return;
-    if (this.userTouched.has(block)) return;
-    var content = block.querySelector(SEL.thinkContent);
-    if (!content) return; // 已折叠
-    var header = block.querySelector(SEL.thinkHeader);
-    if (header) Utils.realClick(header);
+  // 是否开启“深度思考”开关（站点用 localStorage 记录，避免误接管）
+  syncBody: function () {
+    var on = !!DSE.config.get('thinkAutoCollapse');
+    document.body.classList.toggle('dse-think-collapse', on);
   },
-  scan: function () {
-    if (!DSE.config.get('thinkAutoCollapse')) return;
-    var blocks = document.querySelectorAll(SEL.thinkBlock);
-    for (var i = 0; i < blocks.length; i++) this.collapseOne(blocks[i]);
-  },
-  request: function () {
-    if (this.rafQ) return; this.rafQ = true;
-    var self = this;
-    requestAnimationFrame(function () { self.rafQ = false; self.scan(); });
+  clearOpen: function () {
+    document.querySelectorAll('._74c0879.dse-think-open').forEach(function (b) { b.classList.remove('dse-think-open'); });
   },
   init: function () {
     var self = this;
     Utils.onReady(function () {
-      // 记录用户手动操作（捕获阶段先于站点响应）
+      self.syncBody();
+      // 接管折叠头点击：存在思考正文时用 CSS 显隐切换，杜绝站点移除 DOM 引起的滚动跳动
       document.addEventListener('click', function (e) {
+        if (!DSE.config.get('thinkAutoCollapse')) return; // 关闭时完全交给站点原生行为
         var h = e.target.closest && e.target.closest(SEL.thinkHeader);
-        if (h) { var b = h.closest(SEL.thinkBlock); if (b) self.userTouched.add(b); }
+        if (!h) return;
+        var b = h.closest(SEL.thinkBlock);
+        if (!b) return;
+        if (!b.querySelector(SEL.thinkContent)) return; // 站点已折叠 → 交回原生展开
+        e.preventDefault(); e.stopPropagation();
+        b.classList.toggle('dse-think-open');
       }, true);
-      self.scan();
-      new MutationObserver(function () { self.request(); })
-        .observe(document.body, { childList: true, subtree: true });
     });
-    DSE.on('cfg:change', function (e) { if (e.path === 'thinkAutoCollapse' && e.value) self.scan(); });
+    DSE.on('cfg:change', function (e) {
+      if (e.path !== 'thinkAutoCollapse') return;
+      self.syncBody();
+      if (!e.value) self.clearOpen();
+    });
   }
 };
 DSE.modules.think = Think;
@@ -1475,8 +1621,11 @@ DSE.modules.latex = Latex;
  * modules/tweaks：UI 细节
  *  - 只隐藏移动欢迎页“下载应用”本体（保留新建对话/展开侧栏等其它按钮）
  *  - 隐藏“内容由 AI 生成”标识；顶栏统一、输入框磨砂（样式见 tweaks.css）
+ * 性能：改为“只扫新增子树 + 低频轻量对账”，不再每次全量遍历 div/span/p
+ *      （长对话下全量扫描是滚动卡顿/抖动的诱因之一）。
  * ============================================================ */
 var Tweaks = {
+  pending: [],
   syncBodyClasses: function () {
     var c = DSE.config;
     document.body.classList.toggle('dse-hide-badge', !!c.get('hideAiBadge'));
@@ -1493,39 +1642,63 @@ var Tweaks = {
     var re = /^\s*下载\s*(应用|APP|App)\s*$/;
     // 兜底：清掉历史版本误标在 header 上的隐藏标记
     document.querySelectorAll('.the-header[data-dse-hide]').forEach(function (h) { h.removeAttribute('data-dse-hide'); });
-    var candidates = document.querySelectorAll('._9579690, [class*="ds-button"]');
-    for (var i = 0; i < candidates.length; i++) {
-      var n = candidates[i];
+    var cands = document.querySelectorAll('._9579690');
+    if (!cands.length) {
+      var hdr = document.querySelector('.the-header');
+      cands = hdr ? hdr.querySelectorAll('[class*="ds-button"], button, [role="button"]') : [];
+    }
+    for (var i = 0; i < cands.length; i++) {
+      var n = cands[i];
       if (n.classList.contains('the-header')) continue;
-      // 自身文本恰好是“下载应用”，且内部确实含按钮/胶囊
       if (re.test(n.textContent || '') && (n.textContent || '').length < 16 && n.querySelector('[role="button"],button')) {
         n.setAttribute('data-dse-hide', '1');
       }
     }
   },
-  hideAiBadgeText: function () {
+  hideAiBadgeTextIn: function (root) {
     if (!DSE.config.get('hideAiBadge')) return;
+    if (!root || root.nodeType !== 1) return;
+    if (root.closest && root.closest('#dse-panel')) return;
     var re = /内容由\s*AI\s*生成|由\s*AI\s*生成|AI\s*generated/i;
-    document.querySelectorAll('div,span,p').forEach(function (n) {
-      if (n.getAttribute('data-dse-hide')) return;
-      // 绝不动设置面板自身（面板里有同名说明文字）
-      if (n.closest('#dse-panel')) return;
-      if (n.children.length > 2) return;
+    var nodes = (root.matches && root.matches('div,span,p')) ? [root] : [];
+    var list = root.querySelectorAll ? root.querySelectorAll('div,span,p') : [];
+    for (var i = 0; i < list.length; i++) nodes.push(list[i]);
+    for (var j = 0; j < nodes.length; j++) {
+      var n = nodes[j];
+      if (n.getAttribute('data-dse-hide')) continue;
+      if (n.closest && n.closest('#dse-panel')) continue;
+      if (n.children.length > 2) continue;
       var t = (n.textContent || '').trim();
       if (t && t.length < 30 && re.test(t)) n.setAttribute('data-dse-hide', '1');
-    });
+    }
   },
   scan: function () {
     this.syncBodyClasses();
     this.hideDownloadApp();
-    this.hideAiBadgeText();
+  },
+  flushPending: function () {
+    var roots = this.pending; this.pending = [];
+    this.scan();
+    for (var i = 0; i < roots.length; i++) this.hideAiBadgeTextIn(roots[i]);
   },
   init: function () {
     var self = this;
     Utils.onReady(function () {
       self.scan();
-      setInterval(self.scan.bind(self), 800);
-      new MutationObserver(Utils.rafThrottle(self.scan.bind(self))).observe(document.body, { childList: true, subtree: true });
+      // 首帧全量对账一次（覆盖脚本注入前已存在的节点）
+      self.hideAiBadgeTextIn(document.body);
+      new MutationObserver(function (muts) {
+        for (var i = 0; i < muts.length; i++) {
+          var an = muts[i].addedNodes;
+          for (var j = 0; j < an.length; j++) { if (an[j].nodeType === 1) self.pending.push(an[j]); }
+        }
+        if (self.pending.length) {
+          if (self.pending.length > 200) self.pending = [document.body];
+          if (!self._q) { self._q = true; requestAnimationFrame(function () { self._q = false; self.flushPending(); }); }
+        }
+      }).observe(document.body, { childList: true, subtree: true });
+      // 轻量对账（只切类名 + 定向查询），低频
+      setInterval(function () { self.scan(); }, 2000);
     });
     DSE.on('cfg:change', function () { self.scan(); });
   }
@@ -1603,9 +1776,9 @@ var Context = {
   // 主动重新统计：拉一次当前会话的 history_messages（与官网同接口），实时重算
   recompute: function () {
     var self = this, sid = Utils.currentSid();
-    if (!sid) { Utils.toast('请先进入一个对话'); return Promise.resolve(); }
+    if (!sid) { Utils.toast(DSE.t('请先进入一个对话')); return Promise.resolve(); }
     if (this.busy) return Promise.resolve();
-    this.busy = true; Utils.toast('正在重新统计…');
+    this.busy = true; Utils.toast(DSE.t('正在重新统计…'));
     return fetch('/api/v0/chat/history_messages?chat_session_id=' + encodeURIComponent(sid), {
       method: 'GET', credentials: 'include', headers: { 'Accept': 'application/json' }
     }).then(function (r) { return r.text(); }).then(function (txt) {
@@ -1638,108 +1811,346 @@ DSE.modules.context = Context;
 
 /* ===== modules/nav.js ===== */
 /* ============================================================
- * modules/nav：消息上/下导航（保留原版能力，适配新选择器与移动端）
+ * modules/nav：消息上/下导航（适配官网虚拟列表，issue #3 修复）
+ *
+ * 旧实现用 window.scrollY 计算位置，但官网消息区是【内层滚动容器】
+ * （.ds-virtual-list.ds-scroll-area），window 根本不滚动 → 定位必然错乱。
+ * 新实现：
+ *   - 统一取真实滚动容器；
+ *   - 按 .ds-message 在【滚动内容坐标】里的偏移判断当前消息；
+ *   - 目标消息若尚未挂载（虚拟列表），先滚一屏触发加载再重试；
+ *   - 定位用容器 scrollTo，绝不动 window，避免触发站点滚动复位。
  * ============================================================ */
 var Nav = {
-  list: [], idx: -1, bar: null,
-  USER_SEL: '.ds-message:not(:has(.ds-markdown))',
-  AI_SEL: '.ds-message:has(.ds-markdown)',
-  scan: function () {
-    var out = [];
-    document.querySelectorAll(this.USER_SEL + ',' + this.AI_SEL).forEach(function (el) {
-      var r = el.getBoundingClientRect();
-      if (r.width === 0 && r.height === 0) return;
-      out.push({ el: el, y: r.top + window.scrollY });
-    });
-    out.sort(function (a, b) { return a.y - b.y; });
-    this.list = out;
-  },
-  visualIndex: function () {
-    var center = window.scrollY + innerHeight / 2, best = -1, bd = Infinity;
-    this.list.forEach(function (m, i) {
-      var r = m.el.getBoundingClientRect(), c = window.scrollY + r.top + r.height / 2;
-      if (Math.abs(center - c) < bd) { bd = Math.abs(center - c); best = i; }
-    });
-    return best;
-  },
-  scrollParent: function (el) {
-    var p = el.parentElement;
+  bar: null, busy: false, lastDir: 1,
+
+  container: function () {
+    var el = document.querySelector('.ds-virtual-list.ds-scroll-area') || document.querySelector('.ds-virtual-list');
+    if (el && el.scrollHeight > el.clientHeight) return el;
+    var node = document.querySelector('.ds-virtual-list-visible-items') || document.querySelector('.ds-message');
+    var p = node ? (node.parentElement || null) : null;
     while (p) {
-      var s = getComputedStyle(p);
-      if (p.scrollHeight > p.clientHeight && /(auto|scroll)/.test(s.overflowY)) return p;
+      var cs = getComputedStyle(p);
+      if (p.scrollHeight > p.clientHeight + 4 && /(auto|scroll)/.test(cs.overflowY)) return p;
       p = p.parentElement;
     }
-    return document.documentElement;
+    return el || null;
   },
+
+  rows: function () {
+    var out = [];
+    var nodes = document.querySelectorAll('.ds-message');
+    for (var i = 0; i < nodes.length; i++) {
+      var r = nodes[i].getBoundingClientRect();
+      if (r.width === 0 && r.height === 0) continue;
+      out.push(nodes[i]);
+    }
+    return out; // DOM 顺序 = 视觉顺序
+  },
+
+  // 元素相对“滚动内容顶部”的偏移
+  offsetIn: function (el, sc) {
+    var r = el.getBoundingClientRect(), sr = sc.getBoundingClientRect();
+    return r.top - sr.top + sc.scrollTop;
+  },
+
+  currentIndex: function (rows, sc) {
+    var st = sc.scrollTop, best = 0, bd = Infinity;
+    for (var i = 0; i < rows.length; i++) {
+      var d = Math.abs(this.offsetIn(rows[i], sc) - st);
+      if (d < bd) { bd = d; best = i; }
+    }
+    return best;
+  },
+
+  fire: function (el, behavior) {
+    var sc = this.container();
+    if (!sc || !el) return;
+    // 目标消息顶部对齐到视口顶部（留 8px 余量），保证“当前消息”判定稳定
+    var top = Math.max(0, this.offsetIn(el, sc) - 8);
+    try { sc.scrollTo({ top: top, behavior: behavior || 'auto' }); }
+    catch (e) { sc.scrollTop = top; }
+    this.flash(el);
+  },
+
+  flash: function (el) {
+    if (!el || !el.classList) return;
+    el.classList.remove('dse-nav-flash'); void el.offsetWidth; el.classList.add('dse-nav-flash');
+    clearTimeout(el._dseNavT);
+    el._dseNavT = setTimeout(function () { el.classList.remove('dse-nav-flash'); }, 1500);
+  },
+
   goto: function (dir) {
-    this.scan();
-    if (!this.list.length) return;
-    var vi = this.visualIndex();
-    if (this.idx < 0 || Math.abs(vi - this.idx) > 2) this.idx = vi;
-    this.idx += dir === 'prev' ? -1 : 1;
-    this.idx = Math.max(0, Math.min(this.list.length - 1, this.idx));
-    var m = this.list[this.idx]; if (!m) return;
-    var sp = this.scrollParent(m.el), r = m.el.getBoundingClientRect(), pr = sp.getBoundingClientRect();
-    var top = r.top - pr.top + (sp === document.documentElement ? window.scrollY : sp.scrollTop) - sp.clientHeight * 0.3;
-    sp.scrollTo({ top: top, behavior: 'smooth' });
+    var sc = this.container();
+    if (!sc) return;
+    this.lastDir = dir === 'prev' ? -1 : 1;
+    var rows = this.rows();
+    if (!rows.length) return;
+    var cur = this.currentIndex(rows, sc);
+    var target = cur + this.lastDir;
+
+    if (target >= 0 && target < rows.length) { this.fire(rows[target]); return; }
+
+    // 边界：可能有未挂载的历史/新消息，先滚一屏触发加载再重试
+    if (this.busy) return;
     var self = this;
-    m.el.classList.remove('dse-nav-flash'); void m.el.offsetWidth; m.el.classList.add('dse-nav-flash');
-    setTimeout(function () { m.el.classList.remove('dse-nav-flash'); }, 1500);
+    this.busy = true;
+    var step = sc.clientHeight * 0.9;
+    try { sc.scrollBy({ top: this.lastDir * step, behavior: 'auto' }); }
+    catch (e) { sc.scrollTop = Math.max(0, sc.scrollTop + this.lastDir * step); }
+    setTimeout(function () {
+      self.busy = false;
+      var rows2 = self.rows();
+      var cur2 = self.currentIndex(rows2, sc);
+      var t2 = cur2 + self.lastDir;
+      if (t2 >= 0 && t2 < rows2.length) self.fire(rows2[t2], 'auto');
+    }, 460);
   },
+
   ensure: function () {
     if (this.bar) return;
     this.bar = document.createElement('div'); this.bar.id = 'dse-nav';
     this.bar.innerHTML =
-      '<button data-n="prev" title="上一条消息"><svg viewBox="0 0 20 20"><path d="M9.3 5.7a1 1 0 0 1 1.4 0l5.8 5.7a1 1 0 0 1-1.4 1.5L10 7.8l-5 5a1 1 0 1 1-1.5-1.4z"/></svg></button>' +
-      '<button data-n="next" title="下一条消息"><svg viewBox="0 0 20 20" style="transform:rotate(180deg)"><path d="M9.3 5.7a1 1 0 0 1 1.4 0l5.8 5.7a1 1 0 0 1-1.4 1.5L10 7.8l-5 5a1 1 0 1 1-1.5-1.4z"/></svg></button>';
+      '<button data-n="prev" title="' + DSE.t('上一条消息') + '"><svg viewBox="0 0 20 20"><path d="M9.3 5.7a1 1 0 0 1 1.4 0l5.8 5.7a1 1 0 0 1-1.4 1.5L10 7.8l-5 5a1 1 0 1 1-1.5-1.4z"/></svg></button>' +
+      '<button data-n="next" title="' + DSE.t('下一条消息') + '"><svg viewBox="0 0 20 20" style="transform:rotate(180deg)"><path d="M9.3 5.7a1 1 0 0 1 1.4 0l5.8 5.7a1 1 0 0 1-1.4 1.5L10 7.8l-5 5a1 1 0 1 1-1.5-1.4z"/></svg></button>';
     var self = this;
     this.bar.addEventListener('click', function (e) {
       var b = e.target.closest('button'); if (b) self.goto(b.getAttribute('data-n'));
     });
     document.body.appendChild(this.bar);
   },
+
+  sync: function () {
+    if (!this.bar) return;
+    var on = !!DSE.config.get('navButtons');
+    this.bar.style.display = on ? '' : 'none';
+    this.bar.querySelectorAll('button').forEach(function (b) {
+      b.title = DSE.t(b.getAttribute('data-n') === 'prev' ? '上一条消息' : '下一条消息');
+    });
+  },
+
   init: function () {
     var self = this;
     Utils.onReady(function () {
-      var sync = function () { self.ensure(); self.bar.style.display = DSE.config.get('navButtons') ? '' : 'none'; };
-      sync(); setInterval(sync, 1500);
-      DSE.on('cfg:change', sync);
+      self.ensure(); self.sync();
+      setInterval(function () { self.ensure(); self.sync(); }, 1500);
+      DSE.on('cfg:change', function (e) { if (e.path === 'navButtons') self.sync(); });
+      DSE.on('lang:change', function () { self.sync(); });
     });
   }
 };
 DSE.modules.nav = Nav;
 
 /* ===== modules/zoom.js ===== */
-/* modules/zoom：页面缩放（保留原版能力，弹窗出现时临时还原） */
+/* modules/zoom：页面缩放（只缩不放：上限 100%，避免设置面板被放大到屏幕外无法还原，issue #4）
+ * 弹窗/预览出现时临时还原缩放，避免错位；检测只扫“可能的弹层”节点，不做全量 body * 遍历。 */
 var Zoom = {
   paused: false, saved: 100,
+  clamp: function (v) { v = Number(v); if (!v || isNaN(v)) v = 100; return Math.max(60, Math.min(100, Math.round(v))); },
   apply: function (v) {
+    v = this.clamp(v);
     this.saved = v;
     if (!this.paused) document.documentElement.style.zoom = v === 100 ? '' : String(v / 100);
+  },
+  hasModal: function () {
+    var nodes = document.querySelectorAll('[role="dialog"],[class*="modal"],[class*="overlay"],[class*="preview"],[class*="Dialog"]');
+    for (var i = 0; i < nodes.length; i++) {
+      var el = nodes[i];
+      if (el.closest && el.closest('#dse-panel')) continue;
+      var r = el.getBoundingClientRect();
+      if (r.width > innerWidth * 0.45 && r.height > innerHeight * 0.45 &&
+          getComputedStyle(el).position === 'fixed') return true;
+    }
+    return false;
   },
   init: function () {
     var self = this;
     Utils.onReady(function () {
       self.apply(DSE.config.get('zoom'));
-      // 站点弹窗/预览时暂停缩放，避免错位
       setInterval(function () {
-        var found = false;
-        document.querySelectorAll('body *').forEach(function (el) {
-          if (found) return;
-          var role = el.getAttribute('role');
-          var cn = String(el.className || '');
-          var r = el.getBoundingClientRect();
-          if (r.width > innerWidth * 0.45 && r.height > innerHeight * 0.45 &&
-              (role === 'dialog' || /modal|overlay|dialog|preview/i.test(cn)) &&
-              getComputedStyle(el).position === 'fixed') found = true;
-        });
+        var found = self.hasModal();
         if (found && !self.paused) { self.paused = true; document.documentElement.style.zoom = ''; }
         else if (!found && self.paused) { self.paused = false; self.apply(self.saved); }
-      }, 400);
+      }, 500);
+    });
+    DSE.on('cfg:change', function (e) {
+      if (e.path === 'zoom') { var v = self.clamp(DSE.config.get('zoom')); if (v !== DSE.config.get('zoom')) DSE.config.set('zoom', v); self.apply(v); }
     });
   }
 };
 DSE.modules.zoom = Zoom;
+
+/* ===== modules/fold.js ===== */
+/* ============================================================
+ * modules/fold：代码块自动折叠（issue #5）
+ *  - 官网原生结构：.md-code-block > .md-code-block-banner-wrap(语言/复制/下载) + pre>span*
+ *  - 仅对 .md-code-block 自身的 pre 设 max-height 做裁剪，并用一个自建按钮切换，
+ *    绝不移动/包裹官网节点，原生「复制 / 下载」按钮完全不受影响。
+ *  - 裁剪用 max-height+overflow，属纯样式层，不改 DOM 结构，避免虚拟列表重算导致跳动/闪烁。
+ *  - 幂等：块上记 data-dse-fold="N:state"，行数配置变化时自动重算。
+ * ============================================================ */
+var Fold = {
+  ICON: '<svg viewBox="0 0 20 20" width="14" height="14" aria-hidden="true"><path d="M9.3 5.7a1 1 0 0 1 1.4 0l5.8 5.7a1 1 0 0 1-1.4 1.5L10 7.8l-5 5a1 1 0 1 1-1.5-1.4z"/></svg>',
+
+  preOf: function (block) {
+    var kids = block.children, out = null;
+    for (var i = 0; i < kids.length; i++) if (kids[i].tagName === 'PRE') out = kids[i];
+    return out;
+  },
+
+  // 代码块实际行数（优先按行节点数，退化到换行符）
+  lineCount: function (pre) {
+    var spans = pre.querySelectorAll(':scope > span');
+    if (spans.length) return spans.length;
+    var t = pre.textContent || '';
+    return t ? t.split('\n').length : 0;
+  },
+
+  metrics: function (pre) {
+    var cs = getComputedStyle(pre);
+    var lh = parseFloat(cs.lineHeight);
+    if (!lh || isNaN(lh)) lh = (parseFloat(cs.fontSize) || 13) * 1.55;
+    var pt = parseFloat(cs.paddingTop) || 0, pb = parseFloat(cs.paddingBottom) || 0;
+    return { lh: lh, pad: pt + pb };
+  },
+
+  ensureCtrl: function (block) {
+    var ctrl = block.querySelector(':scope > .dse-code-fold');
+    if (!ctrl) {
+      ctrl = document.createElement('div');
+      ctrl.className = 'dse-code-fold';
+      ctrl.setAttribute('role', 'button');
+      ctrl.setAttribute('tabindex', '0');
+      ctrl.innerHTML = this.ICON + '<span class="dse-code-fold-t"></span>';
+      block.appendChild(ctrl);
+    }
+    return ctrl;
+  },
+
+  // 让折叠条背景/文字与代码区一致（同色融合，深浅自适应）
+  paint: function (block, pre) {
+    var ctrl = block.querySelector(':scope > .dse-code-fold');
+    if (!ctrl || !pre) return;
+    var bg = getComputedStyle(pre).backgroundColor || '';
+    ctrl.style.background = (bg && bg !== 'rgba(0, 0, 0, 0)' && bg !== 'transparent') ? bg : 'transparent';
+    ctrl.style.setProperty('--dse-fold-bg', ctrl.style.background);
+    var m = /rgba?\((\d+)[,\s]+(\d+)[,\s]+(\d+)/.exec(bg);
+    if (m) {
+      var lum = (0.299 * +m[1] + 0.587 * +m[2] + 0.114 * +m[3]) / 255;
+      ctrl.style.color = lum < 0.5 ? 'rgba(226,232,240,.72)' : 'rgba(55,65,81,.78)';
+      ctrl.style.borderTopColor = lum < 0.5 ? 'rgba(255,255,255,.09)' : 'rgba(0,0,0,.07)';
+    }
+  },
+
+  setLabel: function (block, collapsed) {
+    var ctrl = block.querySelector(':scope > .dse-code-fold');
+    if (!ctrl) return;
+    var t = ctrl.querySelector('.dse-code-fold-t');
+    if (t) t.textContent = collapsed ? DSE.t('展开') : DSE.t('收起');
+    block.classList.toggle('dse-code-collapsed', collapsed);
+    block.classList.toggle('dse-code-expanded', !collapsed);
+  },
+
+  apply: function (block) {
+    if (!DSE.config.get('codeFold')) { this.reset(block); return; }
+    var pre = this.preOf(block);
+    if (!pre) return;
+    var N = Math.max(1, Number(DSE.config.get('codeFoldLines')) || 10);
+    var sig = block.getAttribute('data-dse-fold') || '';
+    var state = sig.split(':')[1] || '';
+    var m = this.metrics(pre);
+    var maxH = m.lh * N + m.pad;
+    var foldable = pre.scrollHeight > maxH + 2;
+
+    if (!foldable) {
+      // 已不需要折叠：清掉残留样式与按钮（自愈，防止站点重渲染后残留）
+      if (state && state !== 'none') { this.reset(block); block.setAttribute('data-dse-fold', N + ':none'); }
+      else if (block.querySelector(':scope > .dse-code-fold') || pre.style.maxHeight) { this.reset(block); block.setAttribute('data-dse-fold', N + ':none'); }
+      return;
+    }
+
+    // 需要折叠：每次扫描都重设一次（幂等，站点重渲染清掉后能自愈）
+    this.ensureCtrl(block);
+    this.paint(block, pre);
+    var collapsed = state !== 'expanded';
+    pre.style.maxHeight = collapsed ? maxH + 'px' : '';
+    pre.style.overflowY = collapsed ? 'hidden' : '';
+    this.setLabel(block, collapsed);
+    block.setAttribute('data-dse-fold', N + ':' + (collapsed ? 'collapsed' : 'expanded'));
+  },
+
+  reset: function (block) {
+    var pre = this.preOf(block);
+    if (pre) { pre.style.maxHeight = ''; pre.style.overflowY = ''; }
+    var ctrl = block.querySelector(':scope > .dse-code-fold');
+    if (ctrl) ctrl.remove();
+    block.classList.remove('dse-code-collapsed', 'dse-code-expanded');
+  },
+
+  toggle: function (block) {
+    var pre = this.preOf(block);
+    if (!pre) return;
+    var N = Math.max(1, Number(DSE.config.get('codeFoldLines')) || 10);
+    var collapsed = block.classList.contains('dse-code-collapsed');
+    var m = this.metrics(pre);
+    if (collapsed) {
+      pre.style.maxHeight = ''; pre.style.overflowY = '';
+      this.setLabel(block, false);
+      block.setAttribute('data-dse-fold', N + ':expanded');
+    } else {
+      pre.style.maxHeight = Math.round(m.lh * N + m.pad) + 'px';
+      pre.style.overflowY = 'hidden';
+      this.setLabel(block, true);
+      block.setAttribute('data-dse-fold', N + ':collapsed');
+    }
+  },
+
+  rafQ: false,
+  request: function () {
+    if (this.rafQ) return; this.rafQ = true;
+    var self = this;
+    requestAnimationFrame(function () { self.rafQ = false; self.scan(); });
+  },
+  scan: function () {
+    var blocks = document.querySelectorAll('.md-code-block');
+    for (var i = 0; i < blocks.length; i++) {
+      try { this.apply(blocks[i]); } catch (e) {}
+    }
+  },
+
+  init: function () {
+    var self = this;
+    Utils.onReady(function () {
+      self.scan();
+      new MutationObserver(Utils.debounce(function () { self.request(); }, 220))
+        .observe(document.body, { childList: true, subtree: true, characterData: true });
+      document.addEventListener('click', function (e) {
+        var c = e.target.closest && e.target.closest('.dse-code-fold');
+        if (!c) return;
+        var block = c.closest('.md-code-block');
+        if (!block || !block.contains(c)) return;
+        e.preventDefault(); e.stopPropagation();
+        self.toggle(block);
+      }, true);
+      document.addEventListener('keydown', function (e) {
+        if (e.key !== 'Enter' && e.key !== ' ') return;
+        var c = e.target.closest && e.target.closest('.dse-code-fold');
+        if (!c) return;
+        var block = c.closest('.md-code-block');
+        if (block) { e.preventDefault(); self.toggle(block); }
+      });
+    });
+    DSE.on('cfg:change', function (e) {
+      if (e.path === 'codeFold' || e.path === 'codeFoldLines') self.request();
+    });
+    DSE.on('lang:change', function () { self.scanLabels(); });
+  },
+  scanLabels: function () {
+    var blocks = document.querySelectorAll('.md-code-block.dse-code-collapsed, .md-code-block.dse-code-expanded');
+    for (var i = 0; i < blocks.length; i++) this.setLabel(blocks[i], blocks[i].classList.contains('dse-code-collapsed'));
+  }
+};
+DSE.modules.fold = Fold;
 
 /* ===== modules/buttons.js ===== */
 /* ============================================================
@@ -1776,26 +2187,29 @@ var Buttons = {
     var bar = this.findToolbar();
     if (!bar) return;
     if (!document.getElementById('dse-btn-full') && DSE.config.get('fullscreenBtn')) {
-      var fb = this.make('dse-btn-full', '一键全屏', this.ICONS.full, function () {
+      var fb = this.make('dse-btn-full', DSE.t('一键全屏'), this.ICONS.full, function () {
         if (document.fullscreenElement) document.exitFullscreen().catch(function () {});
         else document.documentElement.requestFullscreen().catch(function () {});
       });
       bar.insertBefore(fb, bar.firstChild);
     }
     if (!document.getElementById('dse-btn-settings')) {
-      var sb = this.make('dse-btn-settings', 'DeepSeek Enhance 设置', this.ICONS.settings, function () {
+      var sb = this.make('dse-btn-settings', DSE.t('DeepSeek Enhance 设置'), this.ICONS.settings, function () {
         DSE.modules.panel && DSE.modules.panel.toggle();
       });
       bar.insertBefore(sb, bar.firstChild);
     }
     var fs = document.getElementById('dse-btn-full');
-    if (fs) fs.style.display = DSE.config.get('fullscreenBtn') ? '' : 'none';
+    if (fs) { fs.style.display = DSE.config.get('fullscreenBtn') ? '' : 'none'; fs.title = DSE.t('一键全屏'); }
+    var st = document.getElementById('dse-btn-settings');
+    if (st) st.title = DSE.t('DeepSeek Enhance 设置');
   },
   init: function () {
     var self = this;
     Utils.onReady(function () {
       self.inject();
       new MutationObserver(Utils.debounce(self.inject.bind(self), 200)).observe(document.body, { childList: true, subtree: true });
+      DSE.on('lang:change', function () { self.inject(); });
     });
   }
 };
@@ -1804,7 +2218,7 @@ DSE.modules.buttons = Buttons;
 /* ===== settings/panel.js ===== */
 /* ============================================================
  * settings/panel：统一设置面板（移动优先；分区清晰、不拥挤）
- *  外观 / 对话 / 提示词 / 其他
+ *  外观 / 对话 / 提示词 / 其他（界面语言可切中英文，见 core/i18n）
  * ============================================================ */
 var Panel = {
   el: null, open_: false,
@@ -1816,84 +2230,91 @@ var Panel = {
   },
 
   build: function () {
+    var T = DSE.t;
     var el = document.createElement('div'); el.id = 'dse-panel';
     el.innerHTML =
       '<button class="dse-p-close" data-act="close">×</button>' +
       '<div class="dse-p-tabs">' +
-        [['look', '外观'], ['chat', '对话'], ['prompt', '提示词'], ['more', '其他']].map(function (t, i) {
+        [['look', T('外观')], ['chat', T('对话')], ['prompt', T('提示词')], ['more', T('其他')]].map(function (t, i) {
           return '<button class="dse-p-tab' + (i === 0 ? ' dse-active' : '') + '" data-tab="' + t[0] + '">' + t[1] + '</button>';
         }).join('') +
       '</div><div class="dse-p-body">' +
 
       // ============ 外观 ============
       '<div class="dse-p-page dse-active" data-page="look">' +
-        '<div class="dse-p-title">背景图片</div>' +
-        '<input class="dse-text" data-bind="bg.url" placeholder="图片 URL，留空用默认图">' +
-        '<div class="dse-btn-row"><button class="dse-btn ghost" data-act="uploadBg">上传</button>' +
-        '<button class="dse-btn ghost" data-act="defaultBg">默认图</button>' +
-        '<button class="dse-btn danger" data-act="clearBg">关闭背景</button></div>' +
+        '<div class="dse-p-title">' + T('背景图片') + '</div>' +
+        '<input class="dse-text" data-bind="bg.url" placeholder="' + T('图片 URL，留空用默认图') + '">' +
+        '<div class="dse-btn-row"><button class="dse-btn ghost" data-act="uploadBg">' + T('上传') + '</button>' +
+        '<button class="dse-btn ghost" data-act="defaultBg">' + T('默认图') + '</button>' +
+        '<button class="dse-btn danger" data-act="clearBg">' + T('关闭背景') + '</button></div>' +
         '<input type="file" data-role="bgFile" accept="image/*" style="display:none">' +
-        '<div class="dse-range-row"><span>模糊</span><input type="range" min="0" max="30" data-bind="bg.blur"><span class="dse-range-val" data-val="bg.blur"></span></div>' +
-        '<div class="dse-range-row"><span>亮度</span><input type="range" min="40" max="160" data-bind="bg.brightness"><span class="dse-range-val" data-val="bg.brightness"></span></div>' +
-        '<div class="dse-p-sec">气泡材质</div>' +
+        '<div class="dse-range-row"><span>' + T('模糊') + '</span><input type="range" min="0" max="30" data-bind="bg.blur"><span class="dse-range-val" data-val="bg.blur"></span></div>' +
+        '<div class="dse-range-row"><span>' + T('亮度') + '</span><input type="range" min="40" max="160" data-bind="bg.brightness"><span class="dse-range-val" data-val="bg.brightness"></span></div>' +
+        '<div class="dse-p-sec">' + T('气泡材质') + '</div>' +
         '<div class="dse-cards" data-cards="bubblePreset">' +
-          [['default', '默认', '清爽浅色气泡'], ['frosted', 'iOS 磨砂', '高饱和毛玻璃'], ['water', '水玻璃', '通透高光（推荐）']].map(function (c) {
+          [['default', T('默认'), T('清爽浅色气泡')], ['frosted', T('iOS 磨砂'), T('高饱和毛玻璃')], ['water', T('水玻璃'), T('通透高光（推荐）')]].map(function (c) {
             return '<button class="dse-card" data-card-val="' + c[0] + '"><b>' + c[1] + '</b><small>' + c[2] + '</small></button>';
           }).join('') + '</div>' +
-        '<div class="dse-p-sec">界面</div>' +
-        this.sw('inputFrosted', '输入框悬浮磨砂') +
-        this.sw('fixTopbar', '统一顶栏', '消除分享按钮单独底色/标题黑条') +
+        '<div class="dse-p-sec">' + T('界面') + '</div>' +
+        this.sw('inputFrosted', T('输入框悬浮磨砂')) +
+        this.sw('fixTopbar', T('统一顶栏'), T('消除分享按钮单独底色/标题黑条')) +
         '<div class="dse-seg" data-seg="topbarStyle" style="margin:2px 0 6px">' +
-          '<button data-v="frosted">磨砂</button><button data-v="transparent">背景透出</button></div>' +
-        this.sw('hideDownloadApp', '隐藏“下载应用”', '仅欢迎页，不影响新建对话/侧栏按钮') +
-        '<div class="dse-range-row"><span>页面缩放</span><input type="range" min="60" max="180" step="5" data-bind="zoom"><span class="dse-range-val" data-val="zoom"></span></div>' +
+          '<button data-v="frosted">' + T('磨砂') + '</button><button data-v="transparent">' + T('背景透出') + '</button></div>' +
+        this.sw('hideDownloadApp', T('隐藏“下载应用”'), T('仅欢迎页，不影响新建对话/侧栏按钮')) +
+        '<div class="dse-range-row"><span>' + T('页面缩放') + '</span><input type="range" min="60" max="100" step="5" data-bind="zoom"><span class="dse-range-val" data-val="zoom"></span></div>' +
       '</div>' +
 
       // ============ 对话 ============
       '<div class="dse-p-page" data-page="chat">' +
-        '<div class="dse-p-title">消息呈现</div>' +
-        this.sw('thinkAutoCollapse', '思考区自动折叠', '默认收起 DeepSeek 思考过程') +
-        this.sw('hideAiBadge', '隐藏 AI 生成标识', '底部“内容由 AI 生成”等') +
-        this.sw('markdownPretty', 'Markdown 排版美化', '只改本地样式，不向 AI 发送任何指令') +
-        this.sw('latexRender', 'LaTeX 公式渲染', '离线 KaTeX，渲染 \\( \\)、\\[ \\]、$ 公式') +
-        this.sw('timeInject', '隐式时间注入') +
-        '<div class="dse-p-sec">本会话上下文用量</div>' +
+        '<div class="dse-p-title">' + T('消息呈现') + '</div>' +
+        this.sw('thinkAutoCollapse', T('思考区自动折叠'), T('默认收起 DeepSeek 思考过程')) +
+        this.sw('codeFold', T('代码块自动折叠'), T('超过设定行数自动收起，点击展开')) +
+        '<div class="dse-range-row"><span>' + T('代码块显示行数') + '</span><input type="range" min="5" max="40" step="1" data-bind="codeFoldLines"><span class="dse-range-val" data-val="codeFoldLines"></span></div>' +
+        this.sw('hideAiBadge', T('隐藏 AI 生成标识'), T('底部“内容由 AI 生成”等')) +
+        this.sw('markdownPretty', T('Markdown 排版美化'), T('只改本地样式，不向 AI 发送任何指令')) +
+        this.sw('latexRender', T('LaTeX 公式渲染'), T('离线 KaTeX，渲染 \\( \\)、\\[ \\]、$ 公式')) +
+        this.sw('timeInject', T('隐式时间注入')) +
+        '<div class="dse-p-sec">' + T('本会话上下文用量') + '</div>' +
         '<div class="dse-ctx"><div class="dse-ctx-track"><div class="dse-ctx-fill" data-ctx-fill></div></div>' +
         '<div class="dse-ctx-meta"><span data-ctx-text></span><span data-ctx-pct></span></div></div>' +
-        '<div class="dse-range-row"><span>上下文上限</span><input type="range" min="32000" max="1024000" step="32000" data-bind="ctxLimitTokens"><span class="dse-range-val" data-val="ctxLimitTokens"></span></div>' +
-        '<div class="dse-row-desc" style="margin:-2px 0 6px">快速模式约 128K，专家模式(V3.2/V4)约 1M，按所用模型调整。</div>' +
-        '<button class="dse-btn ghost" data-act="resetCtx" style="width:100%">立即重新统计（拉取本会话历史）</button>' +
+        '<div class="dse-range-row"><span>' + T('上下文上限') + '</span><input type="range" min="32000" max="1024000" step="32000" data-bind="ctxLimitTokens"><span class="dse-range-val" data-val="ctxLimitTokens"></span></div>' +
+        '<div class="dse-row-desc" style="margin:-2px 0 6px">' + T('快速模式约 128K，专家模式(V3.2/V4)约 1M，按所用模型调整。') + '</div>' +
+        '<button class="dse-btn ghost" data-act="resetCtx" style="width:100%">' + T('立即重新统计（拉取本会话历史）') + '</button>' +
       '</div>' +
 
       // ============ 提示词 ============
       '<div class="dse-p-page" data-page="prompt">' +
-        '<div class="dse-p-title">本会话系统提示词</div>' +
-        '<div class="dse-row-desc" style="margin-bottom:6px">只对当前这一个会话生效；切换到其它会话互不影响、互不可见。</div>' +
-        this.sw('systemPromptEnabled', '启用本会话系统提示词') +
-        '<textarea class="dse-text" data-session="assistantSystemPrompt" placeholder="写给当前会话 AI 的系统设定…" style="min-height:150px;margin-top:8px"></textarea>' +
-        '<details class="dse-details" style="margin-top:10px"><summary>高级：实际注入内容预览 / 模板</summary>' +
-          '<label class="dse-row-desc">撤回后简短回应（模板，可编辑）</label><textarea class="dse-text" data-tpl="recallBrief" style="min-height:80px"></textarea>' +
-          '<div class="dse-btn-row"><button class="dse-btn ghost" data-act="resetTpl">恢复默认</button>' +
-          '<button class="dse-btn ghost" data-act="previewPrompt">预览实际注入</button></div>' +
+        '<div class="dse-p-title">' + T('本会话系统提示词') + '</div>' +
+        '<div class="dse-row-desc" style="margin-bottom:6px">' + T('只对当前这一个会话生效；切换到其它会话互不影响、互不可见。') + '</div>' +
+        this.sw('systemPromptEnabled', T('启用本会话系统提示词')) +
+        '<textarea class="dse-text" data-session="assistantSystemPrompt" placeholder="' + T('写给当前会话 AI 的系统设定…') + '" style="min-height:150px;margin-top:8px"></textarea>' +
+        '<details class="dse-details" style="margin-top:10px"><summary>' + T('高级：实际注入内容预览 / 模板') + '</summary>' +
+          '<label class="dse-row-desc">' + T('撤回后简短回应（模板，可编辑）') + '</label><textarea class="dse-text" data-tpl="recallBrief" style="min-height:80px"></textarea>' +
+          '<div class="dse-btn-row"><button class="dse-btn ghost" data-act="resetTpl">' + T('恢复默认') + '</button>' +
+          '<button class="dse-btn ghost" data-act="previewPrompt">' + T('预览实际注入') + '</button></div>' +
           '<div class="dse-preview" data-preview style="display:none"></div>' +
         '</details>' +
       '</div>' +
 
       // ============ 其他 ============
       '<div class="dse-p-page" data-page="more">' +
-        '<div class="dse-p-title">防撤回 / 隐私</div>' +
+        '<div class="dse-p-title">' + T('防撤回 / 隐私') + '</div>' +
         '<div class="dse-seg" data-seg="privacyMode">' +
-          '<button data-v="off">关闭</button><button data-v="smart">智能</button><button data-v="full">全量</button></div>' +
-        '<div class="dse-row-desc" style="margin:8px 0">智能：连续撤回连续补回；服务端重载上下文后只补最新缺失轮次。全量：每次发送都拼接本地历史。</div>' +
-        this.sw('recallBriefHint', '撤回后提示 AI 简短回应', '降低再次撤回概率与 prompt 压力') +
-        '<div class="dse-range-row"><span>全量历史条数</span><input type="range" min="5" max="100" step="5" data-bind="privacyCtxMessages"><span class="dse-range-val" data-val="privacyCtxMessages"></span></div>' +
+          '<button data-v="off">' + T('关闭') + '</button><button data-v="smart">' + T('智能') + '</button><button data-v="full">' + T('全量') + '</button></div>' +
+        '<div class="dse-row-desc" style="margin:8px 0">' + T('智能：连续撤回连续补回；服务端重载上下文后只补最新缺失轮次。全量：每次发送都拼接本地历史。') + '</div>' +
+        this.sw('recallBriefHint', T('撤回后提示 AI 简短回应'), T('降低再次撤回概率与 prompt 压力')) +
+        '<div class="dse-range-row"><span>' + T('全量历史条数') + '</span><input type="range" min="5" max="100" step="5" data-bind="privacyCtxMessages"><span class="dse-range-val" data-val="privacyCtxMessages"></span></div>' +
         '<div class="dse-p-sec" data-hist-info></div>' +
-        '<button class="dse-btn danger" data-act="clearHist" style="width:100%">清除本会话本地历史</button>' +
-        '<div class="dse-p-sec">便捷功能</div>' +
-        this.sw('navButtons', '消息上下导航按钮') +
-        this.sw('fullscreenBtn', '一键全屏按钮') +
-        '<div class="dse-p-sec">关于</div>' +
-        '<div class="dse-row-desc">DeepSeek Enhance v' + DSE.version + ' · 全部能力本地运行，不上传数据<br>选择器档案见仓库 docs/dom-research.md，官网改版后可据此修复。</div>' +
+        '<button class="dse-btn danger" data-act="clearHist" style="width:100%">' + T('清除本会话本地历史') + '</button>' +
+        '<div class="dse-p-sec">' + T('便捷功能') + '</div>' +
+        this.sw('navButtons', T('消息上下导航按钮')) +
+        this.sw('fullscreenBtn', T('一键全屏按钮')) +
+        '<div class="dse-p-sec">' + T('语言') + '</div>' +
+        '<div class="dse-seg" data-seg="lang">' +
+          '<button data-v="auto">' + T('自动') + '</button><button data-v="zh">中文</button><button data-v="en">English</button></div>' +
+        '<div class="dse-row-desc" style="margin:8px 0">' + T('界面语言（跟随系统 / 中文 / English）') + '</div>' +
+        '<div class="dse-p-sec">' + T('关于') + '</div>' +
+        '<div class="dse-row-desc">' + DSE.t('about.text', { v: DSE.version }) + '</div>' +
       '</div>' +
 
       '</div>';
@@ -1922,7 +2343,10 @@ var Panel = {
       }
       var segv = e.target.closest('.dse-seg button');
       if (segv) {
-        DSE.config.set(segv.parentElement.getAttribute('data-seg'), segv.getAttribute('data-v')); self.refresh();
+        var segKey = segv.parentElement.getAttribute('data-seg');
+        DSE.config.set(segKey, segv.getAttribute('data-v'));
+        if (segKey === 'lang') self.onLangChange();
+        self.refresh();
       }
       var act = e.target.closest('[data-act]');
       if (act) self.action(act.getAttribute('data-act'));
@@ -1952,9 +2376,24 @@ var Panel = {
       DSE.modules.background.uploadFile(f, function () { self.refresh(); });
       e.target.value = '';
     });
-    document.addEventListener('click', function (e) {
-      if (self.open_ && !el.contains(e.target) && e.target.id !== 'dse-btn-settings') self.hide();
-    }, true);
+  },
+
+  onLangChange: function () {
+    DSE.i18n.refresh();
+    DSE.emit('lang:change', { lang: DSE.i18n.lang() });
+    var wasOpen = this.open_;
+    var active = this.el && this.el.querySelector('.dse-p-tab.dse-active');
+    var activeKey = active ? active.getAttribute('data-tab') : 'look';
+    if (this.el) { this.el.remove(); this.el = null; }
+    this.build();
+    var t = this.el.querySelector('.dse-p-tab[data-tab="' + activeKey + '"]');
+    if (t) {
+      this.el.querySelectorAll('.dse-p-tab').forEach(function (x) { x.classList.toggle('dse-active', x === t); });
+      this.el.querySelectorAll('.dse-p-page').forEach(function (p) { p.classList.toggle('dse-active', p.getAttribute('data-page') === activeKey); });
+    }
+    if (wasOpen) { this.open_ = true; this.refresh(); this.el.classList.add('dse-open'); }
+    else this.refresh();
+    Utils.toast(DSE.i18n.lang() === 'zh' ? '语言已切换' : 'Language switched');
   },
 
   fmtLimit: function (path, v) {
@@ -1990,7 +2429,7 @@ var Panel = {
     });
     el.querySelectorAll('[data-val]').forEach(function (v) {
       var path = v.getAttribute('data-val');
-      v.textContent = Panel.fmtLimit(path, resolve(c, path)) ?? '';
+      v.textContent = Panel.fmtLimit(path, resolve(c, path)) || '';
     });
     el.querySelectorAll('[data-seg]').forEach(function (seg) {
       var cur = resolve(c, seg.getAttribute('data-seg'));
@@ -2018,12 +2457,16 @@ var Panel = {
     fill.className = 'dse-ctx-fill ' + (u.level === 'danger' ? 'danger' : u.level === 'warn' ? 'warn' : '');
     var k = function (n) { return n >= 1000 ? (n / 1000).toFixed(0) + 'K' : String(n); };
     this.el.querySelector('[data-ctx-text]').textContent =
-      '约 ' + k(u.used) + ' / ' + k(u.limit) + (u.source === 'estimate' ? '（估算）' : '') + (u.pct >= 75 ? '（建议新对话）' : '');
+      DSE.t('约') + ' ' + k(u.used) + ' / ' + k(u.limit) + (u.source === 'estimate' ? DSE.t('（估算）') : '') + (u.pct >= 75 ? DSE.t('（建议新对话）') : '');
     this.el.querySelector('[data-ctx-pct]').textContent = u.pct + '%';
     var hist = DSE.modules.antiRecall.getHistory(Utils.currentSid());
     var recalled = hist.filter(function (h) { return h.recalled && !h.serverHas && !h.backfilled; }).length;
     var info = this.el.querySelector('[data-hist-info]');
-    if (info) info.textContent = '本地记录 ' + hist.length + ' 条' + (recalled ? '，待回填撤回 ' + recalled + ' 条' : '');
+    if (info) {
+      var txt = DSE.t('本地记录 {n} 条', { n: hist.length });
+      if (recalled) txt += DSE.t('，待回填撤回 {n} 条', { n: recalled });
+      info.textContent = txt;
+    }
   },
   position: function () {
     var el = this.el;
@@ -2053,6 +2496,10 @@ var Panel = {
     document.addEventListener('keydown', function (e) {
       if (e.ctrlKey && e.shiftKey && (e.key === 'B' || e.code === 'KeyB')) { e.preventDefault(); self.toggle(); }
     });
+    // 点击面板外关闭（只注册一次，避免重建面板时重复叠加）
+    document.addEventListener('click', function (e) {
+      if (self.open_ && self.el && !self.el.contains(e.target) && e.target.id !== 'dse-btn-settings') self.hide();
+    }, true);
     window.addEventListener('resize', function () { if (self.open_) self.position(); });
   }
 };
@@ -2071,6 +2518,7 @@ DSE.modules.panel = Panel;
     'think',
     'bubbles',
     'latex',
+    'fold',
     'tweaks',
     'context',
     'nav',

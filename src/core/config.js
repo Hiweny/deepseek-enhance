@@ -5,7 +5,7 @@
 var CFG_KEY = 'dse_config_v1';
 var SESS_KEY = 'dse_sessions_v1';
 
-var DEFAULT_BG = 'https://s41.ax1x.com/2026/09/04/pnkaWjK.png';
+var DEFAULT_BG = 'https://piv.cc.cd/file/BQACAgUAAyEGAASLVN5eAAJycmrFsEF_gBAEksOkBJck6n9y6IK2AALKIAAC1YYwVs2Pus_QNfIXPQQ.jpg';
 
 // 出厂默认 = 正常 AI 助手
 var DEFAULT_CONFIG = {
@@ -22,6 +22,8 @@ var DEFAULT_CONFIG = {
 
   // 对话
   thinkAutoCollapse: true,               // 思考区自动折叠（默认折叠）
+  codeFold: true,                        // 代码块超行数自动折叠
+  codeFoldLines: 10,                     // 代码块默认显示行数
   hideAiBadge: true,                     // 隐藏“内容由 AI 生成”等标识
   markdownPretty: true,                  // 仅本地美化官网 markdown 渲染，不向 AI 发任何指令
   latexRender: true,                     // KaTeX 公式渲染（官网默认不渲染 \( \)/\[ \]/$...$）

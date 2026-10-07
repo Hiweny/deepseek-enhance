@@ -48,7 +48,7 @@ var Background = {
   },
   uploadFile: function (file, cb) {
     if (!file) return;
-    if (file.size > 8 * 1024 * 1024) { Utils.toast('图片不要超过 8MB'); return; }
+    if (file.size > 8 * 1024 * 1024) { Utils.toast(DSE.t('图片不要超过 8MB')); return; }
     var reader = new FileReader();
     reader.onload = function (ev) {
       DSE.config.set('bg.upload', ev.target.result);

@@ -10,6 +10,7 @@
     'think',
     'bubbles',
     'latex',
+    'fold',
     'tweaks',
     'context',
     'nav',

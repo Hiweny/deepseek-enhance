@@ -32,26 +32,29 @@ var Buttons = {
     var bar = this.findToolbar();
     if (!bar) return;
     if (!document.getElementById('dse-btn-full') && DSE.config.get('fullscreenBtn')) {
-      var fb = this.make('dse-btn-full', '一键全屏', this.ICONS.full, function () {
+      var fb = this.make('dse-btn-full', DSE.t('一键全屏'), this.ICONS.full, function () {
         if (document.fullscreenElement) document.exitFullscreen().catch(function () {});
         else document.documentElement.requestFullscreen().catch(function () {});
       });
       bar.insertBefore(fb, bar.firstChild);
     }
     if (!document.getElementById('dse-btn-settings')) {
-      var sb = this.make('dse-btn-settings', 'DeepSeek Enhance 设置', this.ICONS.settings, function () {
+      var sb = this.make('dse-btn-settings', DSE.t('DeepSeek Enhance 设置'), this.ICONS.settings, function () {
         DSE.modules.panel && DSE.modules.panel.toggle();
       });
       bar.insertBefore(sb, bar.firstChild);
     }
     var fs = document.getElementById('dse-btn-full');
-    if (fs) fs.style.display = DSE.config.get('fullscreenBtn') ? '' : 'none';
+    if (fs) { fs.style.display = DSE.config.get('fullscreenBtn') ? '' : 'none'; fs.title = DSE.t('一键全屏'); }
+    var st = document.getElementById('dse-btn-settings');
+    if (st) st.title = DSE.t('DeepSeek Enhance 设置');
   },
   init: function () {
     var self = this;
     Utils.onReady(function () {
       self.inject();
       new MutationObserver(Utils.debounce(self.inject.bind(self), 200)).observe(document.body, { childList: true, subtree: true });
+      DSE.on('lang:change', function () { self.inject(); });
     });
   }
 };

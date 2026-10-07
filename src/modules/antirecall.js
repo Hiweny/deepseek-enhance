@@ -281,7 +281,7 @@ var AntiRecall = {
             if (content) {
               AR.pushHistory(sid, { role: 'assistant', content: content, ts: Date.now(), recalled: state.recalled });
               if (state.recalled && DSE.config.get('privacyMode') === 'smart') {
-                setTimeout(function () { Utils.toast('已拦截一次撤回，真实内容已本地保留'); }, 400);
+                setTimeout(function () { Utils.toast(DSE.t('已拦截一次撤回，真实内容已本地保留')); }, 400);
               }
             }
           } catch (e) {}
