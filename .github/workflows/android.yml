@@ -45,6 +45,14 @@ jobs:
       - name: Build userscript & inject.js
         run: node build.js
 
+      # 固定并复用 debug 签名 keystore：否则每次 CI 都会生成新的调试密钥，
+      # 签名不一致会导致 APK 无法“覆盖安装”，只能先卸载。
+      - name: Cache Android debug keystore
+        uses: actions/cache@v4
+        with:
+          path: ~/.android/debug.keystore
+          key: android-debug-keystore-v1
+
       - name: Verify InlineJs bootstrap (syntax)
         working-directory: android
         run: |
