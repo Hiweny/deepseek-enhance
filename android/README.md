@@ -28,7 +28,16 @@ echo "sdk.dir=/path/to/Android/Sdk" > local.properties
 
 ## 云端构建
 
-推送到 main 后 GitHub Actions（`.github/workflows/android.yml`）自动构建，产物在 Actions 页 Artifacts `DeepSleep-apk` 下载。
+推送到 main 后 GitHub Actions（`.github/workflows/android.yml`）自动构建：
+
+- `build`：`node build.js` 生成 `inject.js` → 校验 `InlineJs` 拼接出的引导串语法 → `assembleRelease` → 上传 Artifact `DeepSleep-apk`。
+- `emulator-test`：在 KVM 加速的 Android 模拟器上安装启动 APK、截图、读取 WebView devtools 目标（失败不阻断发布）。
+- `release`：把产物以**固定 tag `apk`** 发布并覆盖更新，下载链接恒定：
+
+  https://github.com/Hiweny/deepseek-enhance/releases/download/apk/DeepSleep.apk
+
+> 说明：APK 与油猴脚本共用同一份 `dist/inject.js`（单一数据源），所以脚本侧的消息滚动/定位修复会自动同步到 APK。
+
 
 ## 结构
 

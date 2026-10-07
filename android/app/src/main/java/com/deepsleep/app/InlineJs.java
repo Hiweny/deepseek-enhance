@@ -40,8 +40,9 @@ final class InlineJs {
                 // 气泡独立合成层，滚动时不整屏重绘；去掉气泡上的属性过渡动画
                 + ".fbb737a4,.ds-markdown.ds-assistant-message-main-content{transform:translateZ(0);backface-visibility:hidden}"
                 + ".fbb737a4{transition:none!important}"
-                // 虚拟列表禁止过度滚动连锁（避免误触刷新/露底）
+                // 虚拟列表禁止过度滚动连锁（避免误触刷新/露底）；整页也禁止回弹露底
                 + ".ds-virtual-list{overscroll-behavior:contain}"
+                + "html,body{overscroll-behavior:none}"
                 // 输入聚焦（含长文本粘贴）期间暂停输入框磨砂实时采样，改近不透明底色兜底，失焦恢复，避免逐帧重采样卡死
                 + "body.dse-input-frosted ._77cefa5:focus-within{backdrop-filter:none!important;-webkit-backdrop-filter:none!important;background:rgba(246,248,252,.97)!important}"
                 + "body.dark.dse-input-frosted ._77cefa5:focus-within{background:rgba(33,35,43,.97)!important}"

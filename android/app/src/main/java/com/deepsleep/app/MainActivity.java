@@ -133,6 +133,9 @@ public class MainActivity extends Activity {
         root.addView(splashLogo, logoLp);
 
         applyChromiumTuning();
+        // 远程调试必须在【第一个 WebView 实例创建之前】开启，
+        // 否则 devtools 目标列表为空（webview_devtools_remote 拿不到页面）。
+        WebView.setWebContentsDebuggingEnabled(true);
         web = new WebView(this);
         // 渲染进程保持重要优先级，长对话滚动/输入时不被系统降频
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
@@ -147,7 +150,6 @@ public class MainActivity extends Activity {
 
         setupKeyboard();
 
-        WebView.setWebContentsDebuggingEnabled(true);
         // 流畅度：显式硬件层 + 离屏预光栅化（滚动不白块/掉帧）+ 去掉边缘回弹开销
         web.setLayerType(View.LAYER_TYPE_HARDWARE, null);
         web.setOverScrollMode(View.OVER_SCROLL_NEVER);

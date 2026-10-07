@@ -57,10 +57,20 @@ var Tweaks = {
     this.syncBodyClasses();
     this.hideDownloadApp();
   },
+  // 滚动期间暂停扫描：虚拟列表在滚动/加载历史时对主线程时序敏感，
+  // 任何额外同步工作都可能让站点锚定晚一拍，表现为“视觉跳变”。
+  _lastScroll: 0,
+  isScrolling: function () { return this._lastScroll && (Date.now() - this._lastScroll) < 240; },
   flushPending: function () {
+    if (this.isScrolling()) { this._recheck(); return; }
     var roots = this.pending; this.pending = [];
     this.scan();
     for (var i = 0; i < roots.length; i++) this.hideAiBadgeTextIn(roots[i]);
+  },
+  _recheck: function () {
+    if (this._q2) return; this._q2 = true;
+    var self = this;
+    setTimeout(function () { self._q2 = false; if (self.pending.length) self.flushPending(); }, 260);
   },
   init: function () {
     var self = this;
@@ -78,8 +88,9 @@ var Tweaks = {
           if (!self._q) { self._q = true; requestAnimationFrame(function () { self._q = false; self.flushPending(); }); }
         }
       }).observe(document.body, { childList: true, subtree: true });
-      // 轻量对账（只切类名 + 定向查询），低频
-      setInterval(function () { self.scan(); }, 2000);
+      // 轻量对账（只切类名 + 定向查询），低频，且滚动期间跳过
+      setInterval(function () { if (!self.isScrolling()) self.scan(); }, 2000);
+      document.addEventListener('scroll', function () { self._lastScroll = Date.now(); }, true);
     });
     DSE.on('cfg:change', function () { self.scan(); });
   }

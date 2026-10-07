@@ -10,6 +10,9 @@ on:
       - '.github/workflows/android.yml'
   workflow_dispatch:
 
+permissions:
+  contents: write
+
 jobs:
   build:
     runs-on: ubuntu-latest
@@ -25,11 +28,32 @@ jobs:
           distribution: temurin
           java-version: '17'
 
-      - name: Setup Android SDK
-        uses: android-actions/setup-android@v3
+      - name: Ensure Android SDK components
+        run: |
+          set +e
+          SDK="${ANDROID_SDK_ROOT:-$ANDROID_HOME}"
+          echo "SDK=$SDK"
+          CT=$(ls -d "$SDK"/cmdline-tools/*/bin 2>/dev/null | head -1)
+          if [ -n "$CT" ]; then
+            yes | "$CT/sdkmanager" --licenses >/dev/null 2>&1
+            yes | "$CT/sdkmanager" "platforms;android-34" "build-tools;34.0.0" "platform-tools" >/dev/null 2>&1
+          fi
+          echo "platforms:"; ls "$SDK/platforms" 2>/dev/null
+          echo "build-tools:"; ls "$SDK/build-tools" 2>/dev/null
+          exit 0
 
       - name: Build userscript & inject.js
         run: node build.js
+
+      - name: Verify InlineJs bootstrap (syntax)
+        working-directory: android
+        run: |
+          mkdir -p build/gen
+          javac -d build/gen tools/Gen.java
+          java -cp build/gen Gen app/src/main/java ../dist/inject.js build/gen
+          node --check build/gen/full-true.js
+          node --check build/gen/full-false.js
+          echo "InlineJs bootstrap syntax OK"
 
       - name: Build release APK
         working-directory: android
@@ -42,3 +66,70 @@ jobs:
         with:
           name: DeepSleep-apk
           path: DeepSleep.apk
+
+  emulator-test:
+    needs: build
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: DeepSleep-apk
+          path: .
+
+      - name: Enable KVM
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+
+      - name: Smoke test on emulator
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 30
+          target: default
+          arch: x86_64
+          emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -no-snapshot -memory 3072
+          disable-animations: true
+          script: |
+            set +e
+            adb install -r DeepSleep.apk
+            adb shell am start -n com.deepsleep.app/.MainActivity
+            sleep 35
+            adb shell screencap -p /sdcard/shot.png
+            adb pull /sdcard/shot.png apk-screenshot.png 2>/dev/null
+            echo "=== process alive? ==="
+            adb shell pidof com.deepsleep.app
+            echo "=== webview devtools targets ==="
+            PID=$(adb shell pidof com.deepsleep.app | tr -d '\r')
+            if [ -n "$PID" ]; then
+              adb forward tcp:9222 localabstract:webview_devtools_remote_$PID
+              curl -s --max-time 6 http://127.0.0.1:9222/json || true
+            fi
+            exit 0
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: apk-screenshot
+          path: apk-screenshot.png
+          if-no-files-found: ignore
+
+  release:
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: DeepSleep-apk
+          path: .
+      - name: Publish release (overwrite)
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release view apk --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1 || \
+            gh release create apk --repo "$GITHUB_REPOSITORY" \
+              --title "DeepSleep APK (latest)" \
+              --notes "自动构建的最新 DeepSleep APK（同源 dist/inject.js）。每次构建覆盖更新本 Release 的资产。"
+          gh release upload apk DeepSleep.apk --repo "$GITHUB_REPOSITORY" --clobber
+          echo "Download: https://github.com/$GITHUB_REPOSITORY/releases/download/apk/DeepSleep.apk"
