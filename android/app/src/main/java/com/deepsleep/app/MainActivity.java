@@ -150,8 +150,11 @@ public class MainActivity extends Activity {
 
         setupKeyboard();
 
-        // 流畅度：显式硬件层 + 离屏预光栅化（滚动不白块/掉帧）+ 去掉边缘回弹开销
-        web.setLayerType(View.LAYER_TYPE_HARDWARE, null);
+        // 去掉边缘回弹开销。
+        // 注意：这里【不再】给 WebView 强加 View.LAYER_TYPE_HARDWARE —— 它会把整个页面
+        // 画进一张独立图层纹理、绕过 Chromium 的局部失效与异步绘制，长对话虚拟列表滚动时
+        // 反复整屏重绘重传，正是 APK 侧滚动比油猴脚本更抖、定位更乱的主要来源。
+        // WebView 本身默认已硬件加速，无需手工开层。
         web.setOverScrollMode(View.OVER_SCROLL_NEVER);
         WebSettings s = web.getSettings();
         s.setJavaScriptEnabled(true);
@@ -166,7 +169,6 @@ public class MainActivity extends Activity {
         s.setAllowFileAccess(false);
         s.setAllowContentAccess(true);
         s.setMixedContentMode(WebSettings.MIXED_CONTENT_COMPATIBILITY_MODE);
-        s.setOffscreenPreRaster(true); // 视口外预光栅化，滚动/resize 更丝滑
         s.setBuiltInZoomControls(false);
         s.setDisplayZoomControls(false);
 

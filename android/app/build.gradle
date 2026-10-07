@@ -2,6 +2,16 @@ plugins {
     id 'com.android.application'
 }
 
+// ── 固定签名 ───────────────────────────────────────────────────────────────
+// CI 从仓库 Secrets 解码出 keystore（KEYSTORE_BASE64）并以环境变量注入，见
+// .github/workflows/android.yml 的 “Prepare signing keystore” 步骤。
+// 背景：原先直接用 debug 签名，而 debug keystore 由 CI 每次构建随机生成 →
+// 每次产物签名都不同 → “覆盖更新”必然失败（只能先卸载）。
+// 未提供 keystore（本地开发）时自动回退到 debug 签名，构建不会中断。
+def dseEnv = { String n -> System.getenv(n) }
+def stableKs = project.findProperty('DSE_KEYSTORE') ?: dseEnv('DSE_KEYSTORE')
+def hasStable = stableKs != null && !stableKs.isEmpty() && file(stableKs).exists()
+
 android {
     namespace 'com.deepsleep.app'
     compileSdk 34
@@ -10,15 +20,26 @@ android {
         applicationId "com.deepsleep.app"
         minSdk 24
         targetSdk 34
-        versionCode 10
+        versionCode 11
         versionName "8.4.0"
+    }
+
+    signingConfigs {
+        if (hasStable) {
+            stable {
+                storeFile file(stableKs)
+                storePassword project.findProperty('DSE_KEYSTORE_PASSWORD') ?: dseEnv('DSE_KEYSTORE_PASSWORD')
+                keyAlias project.findProperty('DSE_KEY_ALIAS') ?: dseEnv('DSE_KEY_ALIAS')
+                keyPassword project.findProperty('DSE_KEY_PASSWORD') ?: dseEnv('DSE_KEY_PASSWORD')
+                storeType 'JKS'
+            }
+        }
     }
 
     buildTypes {
         release {
             minifyEnabled false
-            // 用 debug 签名直接出可安装包，免去自建 keystore；如需上架再换正式签名
-            signingConfig signingConfigs.debug
+            signingConfig hasStable ? signingConfigs.stable : signingConfigs.debug
         }
     }
     compileOptions {

@@ -16,6 +16,12 @@ permissions:
 jobs:
   build:
     runs-on: ubuntu-latest
+    # Secrets 不能直接出现在 step 的 if 表达式里，先落到 job 级 env 再使用
+    env:
+      KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 }}
+      KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
+      KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
+      KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
     steps:
       - uses: actions/checkout@v4
 
@@ -45,13 +51,22 @@ jobs:
       - name: Build userscript & inject.js
         run: node build.js
 
-      # 固定并复用 debug 签名 keystore：否则每次 CI 都会生成新的调试密钥，
-      # 签名不一致会导致 APK 无法“覆盖安装”，只能先卸载。
-      - name: Cache Android debug keystore
-        uses: actions/cache@v4
-        with:
-          path: ~/.android/debug.keystore
-          key: android-debug-keystore-v1
+      # 从 Secrets 还原固定签名 keystore：签名稳定才能“覆盖更新”，
+      # 否则 CI 每次重建 debug keystore，签名不一致只能先卸载再装。
+      - name: Prepare signing keystore
+        run: |
+          if [ -n "$KEYSTORE_BASE64" ]; then
+            printf '%s' "$KEYSTORE_BASE64" | base64 -d > "$RUNNER_TEMP/deepsleep.jks"
+            {
+              echo "DSE_KEYSTORE=$RUNNER_TEMP/deepsleep.jks"
+              echo "DSE_KEYSTORE_PASSWORD=$KEYSTORE_PASSWORD"
+              echo "DSE_KEY_ALIAS=$KEY_ALIAS"
+              echo "DSE_KEY_PASSWORD=$KEY_PASSWORD"
+            } >> "$GITHUB_ENV"
+            echo "::notice::using fixed release keystore from repository secrets"
+          else
+            echo "::warning::KEYSTORE_BASE64 missing - falling back to debug signing"
+          fi
 
       - name: Verify InlineJs bootstrap (syntax)
         working-directory: android
@@ -70,13 +85,14 @@ jobs:
       - name: Collect APK
         run: cp android/app/build/outputs/apk/release/app-release.apk DeepSleep.apk
 
-      - name: Locate debug keystore
+      - name: Verify APK signature
         run: |
-          echo "HOME=$HOME"
-          echo "ANDROID_USER_HOME=${ANDROID_USER_HOME:-<unset>}"
-          echo "ANDROID_SDK_HOME=${ANDROID_SDK_HOME:-<unset>}"
-          find "$HOME" /root /tmp /usr/local/lib/android -name "debug.keystore" 2>/dev/null | head
-          ls -la "$HOME/.android" 2>/dev/null || echo "no ~/.android"
+          set +e
+          SDK="${ANDROID_SDK_ROOT:-$ANDROID_HOME}"
+          APKSIGNER=$(ls "$SDK"/build-tools/*/apksigner 2>/dev/null | sort | tail -1)
+          echo "apksigner: $APKSIGNER"
+          if [ -n "$APKSIGNER" ]; then "$APKSIGNER" verify --print-certs DeepSleep.apk; fi
+          ls -l DeepSleep.apk
 
       - uses: actions/upload-artifact@v4
         with:
@@ -110,6 +126,7 @@ jobs:
           script: |
             set +e
             adb install -r DeepSleep.apk
+            echo "=== installed versionCode ==="; adb shell dumpsys package com.deepsleep.app | grep -E "versionCode|versionName" | head -3
             adb shell am start -n com.deepsleep.app/.MainActivity
             sleep 30
             adb shell screencap -p /sdcard/shot.png
@@ -141,6 +158,6 @@ jobs:
           gh release view apk --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1 || \
             gh release create apk --repo "$GITHUB_REPOSITORY" \
               --title "DeepSleep APK (latest)" \
-              --notes "自动构建的最新 DeepSleep APK（同源 dist/inject.js）。每次构建覆盖更新本 Release 的资产。"
+              --notes "自动构建的最新 DeepSleep APK（同源 dist/inject.js）。每次构建覆盖更新本 Release 的资产。固定签名，可直接覆盖安装。" 
           gh release upload apk DeepSleep.apk --repo "$GITHUB_REPOSITORY" --clobber
           echo "Download: https://github.com/$GITHUB_REPOSITORY/releases/download/apk/DeepSleep.apk"

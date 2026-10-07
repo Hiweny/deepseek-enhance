@@ -24,7 +24,17 @@ echo "sdk.dir=/path/to/Android/Sdk" > local.properties
 # 产物：app/build/outputs/apk/release/app-release.apk
 ```
 
-当前 release 直接使用 debug 签名以便直接安装；正式上架请自建 keystore 并替换 `signingConfig`。
+release 使用**固定签名**：工作流把仓库 Secrets 里的 `KEYSTORE_BASE64` 解码成 keystore 并注入
+`DSE_KEYSTORE` / `DSE_KEYSTORE_PASSWORD` / `DSE_KEY_ALIAS` / `DSE_KEY_PASSWORD`，`build.gradle`
+据此生成 `stable` signingConfig，签名恒定，可直接覆盖安装（本地无该配置时回退 debug 签名）。
+
+```bash
+# 生成并写入仓库 Secrets（只需一次）
+keytool -genkeypair -v -keystore deepsleep.jks -storetype JKS -alias deepsleep \
+  -keyalg RSA -keysize 2048 -validity 10950 \
+  -storepass '<口令>' -keypass '<口令>' -dname "CN=Hiweny,OU=DeepSleep,O=DeepSleep,C=CN"
+base64 -w0 deepsleep.jks   # → 填入 GitHub Secret KEYSTORE_BASE64
+```
 
 ## 云端构建
 
