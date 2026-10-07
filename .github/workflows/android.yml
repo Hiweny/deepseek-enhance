@@ -95,17 +95,12 @@ jobs:
             set +e
             adb install -r DeepSleep.apk
             adb shell am start -n com.deepsleep.app/.MainActivity
-            sleep 35
+            sleep 30
             adb shell screencap -p /sdcard/shot.png
-            adb pull /sdcard/shot.png apk-screenshot.png 2>/dev/null
-            echo "=== process alive? ==="
-            adb shell pidof com.deepsleep.app
-            echo "=== webview devtools targets ==="
-            PID=$(adb shell pidof com.deepsleep.app | tr -d '\r')
-            if [ -n "$PID" ]; then
-              adb forward tcp:9222 localabstract:webview_devtools_remote_$PID
-              curl -s --max-time 6 http://127.0.0.1:9222/json || true
-            fi
+            adb pull /sdcard/shot.png apk-screenshot.png
+            echo "=== process alive? (pid) ==="; adb shell pidof com.deepsleep.app
+            PID=$(adb shell pidof com.deepsleep.app | tr -d '\r'); adb forward tcp:9222 localabstract:webview_devtools_remote_$PID; echo "=== webview devtools targets ==="; curl -s --max-time 6 http://127.0.0.1:9222/json
+            echo "=== done ==="
             exit 0
 
       - uses: actions/upload-artifact@v4
