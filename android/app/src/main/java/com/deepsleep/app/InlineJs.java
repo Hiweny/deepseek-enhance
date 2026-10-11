@@ -25,12 +25,16 @@ final class InlineJs {
                 + "dseFpObs.observe(document.documentElement,{childList:true,subtree:true,attributes:true,attributeFilter:['class']});"
                 + "setTimeout(function(){try{dseFpObs.disconnect();}catch(e){}var e=document.getElementById('__dse_firstpaint');if(e)e.remove();},6000);}"
                 + "}catch(e){}"
-                // APK 专属出厂默认：版本化迁移，只强制一次（老版本装过也会纠正），之后用户自改不覆盖
-                + "try{var DMK='dse_apk_def_v2';"
+                // APK 专属出厂默认：版本化迁移，只强制一次（老版本装过也会纠正），之后用户自改不覆盖。
+                // ⚠️ 配置存储位置：WebView 模式下脚本经 bootstrap 的 Bridge 读写 localStorage['dse_bridge_store']
+                //    里的键 'dse_config_v1'（不是顶层 key 'dse_config_v1'；写错位置没人读 = 空操作，v2 的历史 bug）。
+                + "try{var DMK='dse_apk_def_v3';"
                 + "if(!localStorage.getItem(DMK)){"
-                + "var dc=JSON.parse(localStorage.getItem('dse_config_v1')||'{}');"
+                + "var bs={};try{bs=JSON.parse(localStorage.getItem('dse_bridge_store')||'{}')||{};}catch(e){bs={};}"
+                + "var dc=(bs&&bs['dse_config_v1']&&typeof bs['dse_config_v1']==='object')?bs['dse_config_v1']:{};"
                 + "dc.fixTopbar=true;dc.topbarStyle='transparent';dc.fullscreenBtn=false;dc.timeInject=true;"
-                + "localStorage.setItem('dse_config_v1',JSON.stringify(dc));"
+                + "bs['dse_config_v1']=dc;"
+                + "localStorage.setItem('dse_bridge_store',JSON.stringify(bs));"
                 + "localStorage.setItem(DMK,'1');}}catch(e){}"
                 // APK 专属 CSS：①背景层钉住大视口，键盘弹起不缩放闪烁；②合成层/降重绘，滚动与长文本输入更流畅
                 + "(function(){"
