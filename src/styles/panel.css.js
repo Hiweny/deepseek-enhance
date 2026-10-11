@@ -50,6 +50,12 @@ textarea.dse-text{min-height:74px;line-height:1.5}
 .dse-ctx-fill.warn{background:linear-gradient(90deg,#f5a623,#ffb340)}
 .dse-ctx-fill.danger{background:linear-gradient(90deg,#e5484d,#ff6b6b)}
 .dse-ctx-meta{display:flex;justify-content:space-between;color:var(--dse-text-2);font-size:11px}
+/* 关于区外链 */
+.dse-links{display:flex;flex-direction:column;gap:8px;margin-top:4px}
+.dse-link{display:flex;align-items:center;justify-content:space-between;padding:9px 12px;border:1px solid var(--dse-border);border-radius:10px;
+  color:var(--dse-accent);text-decoration:none;font-weight:600;font-size:12.5px}
+.dse-link::after{content:"↗";opacity:.7;font-weight:700}
+.dse-link:hover{background:var(--dse-accent-soft)}
 .dse-preview{white-space:pre-wrap;word-break:break-word;font-size:11.5px;line-height:1.55;
   background:rgba(127,127,140,.1);border-radius:10px;padding:10px;max-height:240px;overflow:auto;margin-top:8px}
 .dse-p-close{position:absolute;top:10px;right:12px;border:none;background:transparent;color:var(--dse-text-2);font-size:18px;cursor:pointer;line-height:1;z-index:2}

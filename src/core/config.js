@@ -5,17 +5,17 @@
 var CFG_KEY = 'dse_config_v1';
 var SESS_KEY = 'dse_sessions_v1';
 
-var DEFAULT_BG = 'https://piv.cc.cd/file/BQACAgUAAyEGAASLVN5eAAJycmrFsEF_gBAEksOkBJck6n9y6IK2AALKIAAC1YYwVs2Pus_QNfIXPQQ.jpg';
+var DEFAULT_BG = 'https://t.alcy.cc/ycy';
 
 // 出厂默认 = 正常 AI 助手
 var DEFAULT_CONFIG = {
   // 外观
   bg: { enabled: true, url: DEFAULT_BG, blur: 0, brightness: 100, upload: '' }, // upload=本地dataURL，优先于url
-  bubblePreset: 'water',                 // default / frosted / water
+  bubblePreset: 'frosted',               // default / frosted / water
   inputFrosted: true,                    // 输入框悬浮磨砂玻璃
   zoom: 100,
   fixTopbar: true,                       // 顶栏统一开关
-  topbarStyle: 'frosted',                // frosted=磨砂统一 / transparent=背景直接透出
+  topbarStyle: 'transparent',            // frosted=磨砂统一 / transparent=背景直接透出
   hideDownloadApp: true,                 // 仅隐藏欢迎页“下载应用”（保留其它按钮）
   navButtons: true,                      // 消息上下导航
   fullscreenBtn: true,
@@ -28,7 +28,7 @@ var DEFAULT_CONFIG = {
   markdownPretty: true,                  // 仅本地美化官网 markdown 渲染，不向 AI 发任何指令
   latexRender: true,                     // KaTeX 公式渲染（官网默认不渲染 \( \)/\[ \]/$...$）
   timeInject: false,                     // 时间注入
-  ctxLimitTokens: 128000,                // 上下文上限：快速模式 128K；专家模式可调到 1M
+  ctxWarnPct: 80,                        // 上下文用量提醒阈值（百分比，达阈值弹提示）
 
   // 单会话系统提示词（独立开关，按会话隔离）
   systemPromptEnabled: false,

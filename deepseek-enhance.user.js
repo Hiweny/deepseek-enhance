@@ -2,8 +2,8 @@
 // @name         DeepSeek Enhance 深度增强
 // @name:en      DeepSeek Enhance
 // @namespace    https://github.com/Hiweny/deepseek-enhance
-// @version      8.4.0
-// @description  水玻璃气泡/思考自动折叠/代码块自动折叠/中英文界面/Markdown本地美化/图片URL背景/按会话隔离的系统提示词/防撤回(连续撤回回填·重载对账)/上下文用量/消息导航(虚拟列表适配)/输入框磨砂/顶栏修复/移动端适配
+// @version      8.5.0
+// @description  气泡材质(默认iOS磨砂)/思考自动折叠/代码块自动折叠/中英文界面/Markdown本地美化/图片URL背景/顶栏背景透出/按会话隔离的系统提示词/防撤回(连续撤回回填·重载对账)/上下文用量(1M·阈值提醒)/消息导航(虚拟列表适配)/输入框磨砂/移动端适配
 // @updateURL    https://raw.githubusercontent.com/Hiweny/deepseek-enhance/main/deepseek-enhance.meta.js
 // @downloadURL  https://raw.githubusercontent.com/Hiweny/deepseek-enhance/main/deepseek-enhance.user.js
 // @author       Hiweny
@@ -94,7 +94,7 @@ var Bridge = {
 
 /* ---------- 全局命名空间 + 极简事件总线 ---------- */
 var DSE = window.DSE = {
-  version: '8.4.0',
+  version: '8.5.0',
   runtime: HAS_GM ? 'tampermonkey' : 'inject',
   bridge: Bridge,
   modules: {},
@@ -120,17 +120,17 @@ DSE.log = function () {
 var CFG_KEY = 'dse_config_v1';
 var SESS_KEY = 'dse_sessions_v1';
 
-var DEFAULT_BG = 'https://piv.cc.cd/file/BQACAgUAAyEGAASLVN5eAAJycmrFsEF_gBAEksOkBJck6n9y6IK2AALKIAAC1YYwVs2Pus_QNfIXPQQ.jpg';
+var DEFAULT_BG = 'https://t.alcy.cc/ycy';
 
 // 出厂默认 = 正常 AI 助手
 var DEFAULT_CONFIG = {
   // 外观
   bg: { enabled: true, url: DEFAULT_BG, blur: 0, brightness: 100, upload: '' }, // upload=本地dataURL，优先于url
-  bubblePreset: 'water',                 // default / frosted / water
+  bubblePreset: 'frosted',               // default / frosted / water
   inputFrosted: true,                    // 输入框悬浮磨砂玻璃
   zoom: 100,
   fixTopbar: true,                       // 顶栏统一开关
-  topbarStyle: 'frosted',                // frosted=磨砂统一 / transparent=背景直接透出
+  topbarStyle: 'transparent',            // frosted=磨砂统一 / transparent=背景直接透出
   hideDownloadApp: true,                 // 仅隐藏欢迎页“下载应用”（保留其它按钮）
   navButtons: true,                      // 消息上下导航
   fullscreenBtn: true,
@@ -143,7 +143,7 @@ var DEFAULT_CONFIG = {
   markdownPretty: true,                  // 仅本地美化官网 markdown 渲染，不向 AI 发任何指令
   latexRender: true,                     // KaTeX 公式渲染（官网默认不渲染 \( \)/\[ \]/$...$）
   timeInject: false,                     // 时间注入
-  ctxLimitTokens: 128000,                // 上下文上限：快速模式 128K；专家模式可调到 1M
+  ctxWarnPct: 80,                        // 上下文用量提醒阈值（百分比，达阈值弹提示）
 
   // 单会话系统提示词（独立开关，按会话隔离）
   systemPromptEnabled: false,
@@ -416,12 +416,13 @@ var I18N = {
     '离线 KaTeX，渲染 \\( \\)、\\[ \\]、$ 公式': 'Offline KaTeX for \\( \\), \\[ \\], $ formulas',
     '隐式时间注入': 'Implicit time injection',
     '本会话上下文用量': 'Session context usage',
-    '上下文上限': 'Context limit',
-    '快速模式约 128K，专家模式(V3.2/V4)约 1M，按所用模型调整。': 'About 128K for fast mode, about 1M for expert (V3.2/V4). Adjust to your model.',
+    '提醒阈值': 'Warning threshold',
+    '当前模型上下文约 1M；用量达到该百分比时弹一次提醒。': 'The current model context is about 1M. A reminder pops up when usage reaches this percentage.',
+    '（已达提醒阈值）': ' (warning threshold reached)',
     '立即重新统计（拉取本会话历史）': 'Recount now (fetch this session history)',
     '约': 'About',
     '（估算）': ' (estimated)',
-    '（建议新对话）': ' (start a new chat)',
+    '本会话上下文已使用 {p}%，达到提醒阈值 {t}%，可考虑开启新对话': 'Context usage of this session reached {p}% (warning threshold {t}%). Consider starting a new chat.',
 
     // ---------- 提示词 ----------
     '本会话系统提示词': 'Session system prompt',
@@ -466,7 +467,8 @@ var I18N = {
     '已拦截一次撤回，真实内容已本地保留': 'Recall intercepted; content kept locally',
 
     // ---------- 关于 ----------
-    'about.text': 'DeepSeek Enhance v{v} · everything runs locally, no data uploaded<br>Selector archive: docs/dom-research.md.'
+    'GitHub 仓库': 'GitHub repo',
+    '个人主页': 'Homepage'
   },
   _lang: null,
   resolve: function () {
@@ -931,6 +933,12 @@ textarea.dse-text{min-height:74px;line-height:1.5}
 .dse-ctx-fill.warn{background:linear-gradient(90deg,#f5a623,#ffb340)}
 .dse-ctx-fill.danger{background:linear-gradient(90deg,#e5484d,#ff6b6b)}
 .dse-ctx-meta{display:flex;justify-content:space-between;color:var(--dse-text-2);font-size:11px}
+/* 关于区外链 */
+.dse-links{display:flex;flex-direction:column;gap:8px;margin-top:4px}
+.dse-link{display:flex;align-items:center;justify-content:space-between;padding:9px 12px;border:1px solid var(--dse-border);border-radius:10px;
+  color:var(--dse-accent);text-decoration:none;font-weight:600;font-size:12.5px}
+.dse-link::after{content:"↗";opacity:.7;font-weight:700}
+.dse-link:hover{background:var(--dse-accent-soft)}
 .dse-preview{white-space:pre-wrap;word-break:break-word;font-size:11.5px;line-height:1.55;
   background:rgba(127,127,140,.1);border-radius:10px;padding:10px;max-height:240px;overflow:auto;margin-top:8px}
 .dse-p-close{position:absolute;top:10px;right:12px;border:none;background:transparent;color:var(--dse-text-2);font-size:18px;cursor:pointer;line-height:1;z-index:2}
@@ -1718,37 +1726,41 @@ DSE.modules.tweaks = Tweaks;
 
 /* ===== modules/context.js ===== */
 /* ============================================================
- * modules/context：会话上下文用量（只在设置面板展示，对话界面零侵入）
+ * modules/context：会话上下文用量（设置面板展示 + 达阈值轻提示）
  *
- * 用量口径（2026-09-07 抓包实测）：
- *  - history_messages 的每条 chat_message 自带 accumulated_token_usage，
- *    它是【该消息生成时整段上下文的累计 token】，取最大值 = 当前会话总占用，
- *    因此脚本注入前就存在的旧对话也能精确算出，无需文本估算。
- *  - 实时对话 SSE 的 accumulated_token_usage 同理，取会话级最大值，不累加。
- *  - 文本估算仅在接口无该字段时兜底。
+ * 用量口径（2026-10-11 官网实测复核）：
+ *  - GET /api/v0/chat/history_messages 的每条 chat_message 自带 accumulated_token_usage，
+ *    它是【该消息生成时整段上下文的累计 token】。序列单调递增，取最后一条（也是最大值）
+ *    即当前会话真实占用；脚本注入前就存在的旧对话也能精确算出，无需文本估算。
+ *  - 实时对话 SSE 亦回报 accumulated_token_usage（同一口径），取最新值即可。
+ *  - 文本估算（estimateTokens）仅在接口没有真值时兜底；一旦拿到真值就不再参与，
+ *    避免把渲染文本（含思考过程/排版标记）算进去而虚高。
+ *  - 官网当前模型上下文为 1M（1048576），故固定使用该上限；不再让用户填上限，
+ *    改为让用户设定“提醒阈值百分比”，使用量达到即弹一次轻提示。
  *  - 全部按会话 id 隔离。
  * ============================================================ */
 var Context = {
-  sid: '', live: 0, busy: false,
+  sid: '', live: 0, busy: false, warned: false,
+  LIMIT: 1048576,            // 官网当前模型上下文 ≈ 1M
 
   loadSid: function (sid) {
-    if (!sid || sid === this.sid) return;
-    this.sid = sid;
+    if (!sid) return;
+    if (sid !== this.sid) { this.sid = sid; this.warned = false; }
     this.live = DSE.config.session(sid).serverTokens || 0;
     this.emit();
   },
   setServer: function (sid, v) {
     if (!sid || !(v > 0)) return;
     this.loadSid(sid);
-    if (v > this.live) {
+    if (v !== this.live) {
       this.live = v;
       var s = DSE.config.session(sid);
-      s.serverTokens = Math.max(s.serverTokens || 0, v);
+      s.serverTokens = v;      // 以最新真值为准（刷新后可用更小值纠正）
       DSE.config.saveSessions();
       this.emit();
     }
   },
-  // 从历史响应里取权威用量（每条消息的 accumulated_token_usage 最大值）
+  // 从历史响应里取权威用量（每条消息 accumulated_token_usage 的最大值 = 当前真实占用）
   onHistory: function (payload) {
     try {
       var biz = payload.json && payload.json.data && payload.json.data.biz_data;
@@ -1762,27 +1774,53 @@ var Context = {
         if (typeof m.accumulated_token_usage === 'number') maxTok = Math.max(maxTok, m.accumulated_token_usage);
         (m.fragments || []).forEach(function (f) { text += f.content || ''; });
       });
-      var est = Utils.estimateTokens(text);
       var s = DSE.config.session(sid), changed = false;
-      if (maxTok > (s.serverTokens || 0)) { s.serverTokens = maxTok; changed = true; }
-      var floor = Math.max(maxTok, s.serverTokens || 0);
-      if (est > floor && est > (s.usedTokensEst || 0)) { s.usedTokensEst = est; changed = true; }
+      if (maxTok > 0) {
+        if (maxTok !== (s.serverTokens || 0)) { s.serverTokens = maxTok; changed = true; }
+      } else {
+        // 接口无真值时才用文本估算兜底（一般不会走到）
+        var est = Utils.estimateTokens(text);
+        if (est > 0 && est !== (s.usedTokensEst || 0)) { s.usedTokensEst = est; changed = true; }
+      }
       if (changed) { DSE.config.saveSessions(); this.emit(); }
     } catch (e) {}
   },
   getUsage: function () {
     var sid = this.sid || Utils.currentSid();
     var s = sid ? DSE.config.session(sid) : { serverTokens: 0, usedTokensEst: 0 };
-    var used = Math.max(s.serverTokens || 0, s.usedTokensEst || 0, this.live || 0);
-    var limit = DSE.config.get('ctxLimitTokens') || 128000;
-    var pct = Math.min(100, Math.round(used / limit * 100));
+    var server = Math.max(s.serverTokens || 0, this.live || 0);
+    var used, source;
+    if (server > 0) { used = server; source = 'server'; }          // 权威真值优先
+    else if (s.usedTokensEst > 0) { used = s.usedTokensEst; source = 'estimate'; }
+    else { used = 0; source = 'empty'; }
+    var limit = this.LIMIT;
+    var pct = Math.max(0, Math.min(100, Math.round(used / limit * 100)));
+    var warnPct = DSE.config.get('ctxWarnPct');
+    if (!(warnPct > 0)) warnPct = 80;
     return {
-      used: used, limit: limit, pct: pct,
-      level: pct >= 90 ? 'danger' : (pct >= 75 ? 'warn' : 'ok'),
-      source: (s.serverTokens || 0) > 0 ? 'server' : ((s.usedTokensEst || 0) > 0 ? 'estimate' : 'empty')
+      used: used, limit: limit, pct: pct, warnPct: warnPct,
+      level: pct >= warnPct ? 'danger' : (pct >= Math.round(warnPct * 0.7) ? 'warn' : 'ok'),
+      source: source
     };
   },
-  emit: function () { DSE.emit('ctx:update', this.getUsage()); },
+  // 达到阈值弹一次轻提示；用量回落后重新武装，避免反复打扰
+  checkWarn: function (u) {
+    if (!u || u.source === 'empty') return;
+    var warnPct = u.warnPct || 80;
+    if (u.pct >= warnPct) {
+      if (!this.warned) {
+        this.warned = true;
+        Utils.toast(DSE.t('本会话上下文已使用 {p}%，达到提醒阈值 {t}%，可考虑开启新对话', { p: u.pct, t: warnPct }), 4200);
+      }
+    } else if (u.pct < warnPct - 5) {
+      this.warned = false;
+    }
+  },
+  emit: function () {
+    var u = this.getUsage();
+    this.checkWarn(u);
+    DSE.emit('ctx:update', u);
+  },
 
   // 主动重新统计：拉一次当前会话的 history_messages（与官网同接口），实时重算
   recompute: function () {
@@ -1796,15 +1834,17 @@ var Context = {
       var json = JSON.parse(txt);
       var s = DSE.config.session(sid); s.serverTokens = 0; s.usedTokensEst = 0; self.live = 0;
       self.onHistory({ json: json });
-      // DOM 兜底：当前已渲染消息文本估算
-      var domText = '';
-      document.querySelectorAll('.ds-markdown, .fbb737a4').forEach(function (n) { domText += n.innerText || ''; });
-      var est = Utils.estimateTokens(domText);
-      if (est > (s.usedTokensEst || 0)) { s.usedTokensEst = est; DSE.config.saveSessions(); }
-      self.sid = sid; self.emit();
+      // DOM 兜底：仅当接口没有真值时，才用当前已渲染消息文本估算
+      if (!(s.serverTokens > 0)) {
+        var domText = '';
+        document.querySelectorAll('.ds-markdown, .fbb737a4').forEach(function (n) { domText += n.innerText || ''; });
+        var est = Utils.estimateTokens(domText);
+        if (est > 0) { s.usedTokensEst = est; DSE.config.saveSessions(); }
+      }
+      self.loadSid(sid);
       var u = self.getUsage();
-      Utils.toast('统计完成：约 ' + (u.used >= 1000 ? (u.used / 1000).toFixed(1) + 'K' : u.used) + ' tokens');
-    }).catch(function () { Utils.toast('统计失败（可能需要联网）'); })
+      Utils.toast(DSE.t('统计完成：约') + ' ' + (u.used >= 1000 ? (u.used / 1000).toFixed(1) + 'K' : u.used) + ' ' + DSE.t('tokens'));
+    }).catch(function () { Utils.toast(DSE.t('统计失败（可能需要联网）')); })
       .then(function () { self.busy = false; });
   },
 
@@ -1815,7 +1855,7 @@ var Context = {
       self.loadSid(p.ctx.sid || Utils.currentSid()); self.onHistory(p);
     });
     setInterval(function () { var s = Utils.currentSid(); if (s && s !== self.sid) self.loadSid(s); }, 1000);
-    DSE.on('cfg:change', function (e) { if (e.path === 'ctxLimitTokens') self.emit(); });
+    DSE.on('cfg:change', function (e) { if (e.path === 'ctxWarnPct') { self.warned = false; self.emit(); } });
   }
 };
 DSE.modules.context = Context;
@@ -2288,8 +2328,8 @@ var Panel = {
         '<div class="dse-p-sec">' + T('本会话上下文用量') + '</div>' +
         '<div class="dse-ctx"><div class="dse-ctx-track"><div class="dse-ctx-fill" data-ctx-fill></div></div>' +
         '<div class="dse-ctx-meta"><span data-ctx-text></span><span data-ctx-pct></span></div></div>' +
-        '<div class="dse-range-row"><span>' + T('上下文上限') + '</span><input type="range" min="32000" max="1024000" step="32000" data-bind="ctxLimitTokens"><span class="dse-range-val" data-val="ctxLimitTokens"></span></div>' +
-        '<div class="dse-row-desc" style="margin:-2px 0 6px">' + T('快速模式约 128K，专家模式(V3.2/V4)约 1M，按所用模型调整。') + '</div>' +
+        '<div class="dse-range-row"><span>' + T('提醒阈值') + '</span><input type="range" min="10" max="100" step="5" data-bind="ctxWarnPct"><span class="dse-range-val" data-val="ctxWarnPct"></span></div>' +
+        '<div class="dse-row-desc" style="margin:-2px 0 6px">' + T('当前模型上下文约 1M；用量达到该百分比时弹一次提醒。') + '</div>' +
         '<button class="dse-btn ghost" data-act="resetCtx" style="width:100%">' + T('立即重新统计（拉取本会话历史）') + '</button>' +
       '</div>' +
 
@@ -2325,7 +2365,10 @@ var Panel = {
           '<button data-v="auto">' + T('自动') + '</button><button data-v="zh">中文</button><button data-v="en">English</button></div>' +
         '<div class="dse-row-desc" style="margin:8px 0">' + T('界面语言（跟随系统 / 中文 / English）') + '</div>' +
         '<div class="dse-p-sec">' + T('关于') + '</div>' +
-        '<div class="dse-row-desc">' + DSE.t('about.text', { v: DSE.version }) + '</div>' +
+        '<div class="dse-links">' +
+          '<a class="dse-link" href="https://github.com/Hiweny/deepseek-enhance" target="_blank" rel="noopener noreferrer">' + T('GitHub 仓库') + '</a>' +
+          '<a class="dse-link" href="https://hiweny.github.io/Hiweny-s-web/" target="_blank" rel="noopener noreferrer">' + T('个人主页') + '</a>' +
+        '</div>' +
       '</div>' +
 
       '</div>';
@@ -2408,7 +2451,7 @@ var Panel = {
   },
 
   fmtLimit: function (path, v) {
-    if (path === 'ctxLimitTokens') return v >= 1000 ? (v / 1000) + 'K' : String(v);
+    if (path === 'ctxWarnPct') return v + '%';
     return String(v);
   },
 
@@ -2466,9 +2509,9 @@ var Panel = {
     if (!fill) return;
     fill.style.width = u.pct + '%';
     fill.className = 'dse-ctx-fill ' + (u.level === 'danger' ? 'danger' : u.level === 'warn' ? 'warn' : '');
-    var k = function (n) { return n >= 1000 ? (n / 1000).toFixed(0) + 'K' : String(n); };
+    var k = function (n) { return n >= 1048576 ? (n / 1048576).toFixed(0) + 'M' : (n >= 1000 ? (n / 1000).toFixed(0) + 'K' : String(n)); };
     this.el.querySelector('[data-ctx-text]').textContent =
-      DSE.t('约') + ' ' + k(u.used) + ' / ' + k(u.limit) + (u.source === 'estimate' ? DSE.t('（估算）') : '') + (u.pct >= 75 ? DSE.t('（建议新对话）') : '');
+      DSE.t('约') + ' ' + k(u.used) + ' / ' + k(u.limit) + (u.source === 'estimate' ? DSE.t('（估算）') : '') + (u.pct >= u.warnPct ? DSE.t('（已达提醒阈值）') : '');
     this.el.querySelector('[data-ctx-pct]').textContent = u.pct + '%';
     var hist = DSE.modules.antiRecall.getHistory(Utils.currentSid());
     var recalled = hist.filter(function (h) { return h.recalled && !h.serverHas && !h.backfilled; }).length;

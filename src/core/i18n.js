@@ -56,12 +56,13 @@ var I18N = {
     '离线 KaTeX，渲染 \\( \\)、\\[ \\]、$ 公式': 'Offline KaTeX for \\( \\), \\[ \\], $ formulas',
     '隐式时间注入': 'Implicit time injection',
     '本会话上下文用量': 'Session context usage',
-    '上下文上限': 'Context limit',
-    '快速模式约 128K，专家模式(V3.2/V4)约 1M，按所用模型调整。': 'About 128K for fast mode, about 1M for expert (V3.2/V4). Adjust to your model.',
+    '提醒阈值': 'Warning threshold',
+    '当前模型上下文约 1M；用量达到该百分比时弹一次提醒。': 'The current model context is about 1M. A reminder pops up when usage reaches this percentage.',
+    '（已达提醒阈值）': ' (warning threshold reached)',
     '立即重新统计（拉取本会话历史）': 'Recount now (fetch this session history)',
     '约': 'About',
     '（估算）': ' (estimated)',
-    '（建议新对话）': ' (start a new chat)',
+    '本会话上下文已使用 {p}%，达到提醒阈值 {t}%，可考虑开启新对话': 'Context usage of this session reached {p}% (warning threshold {t}%). Consider starting a new chat.',
 
     // ---------- 提示词 ----------
     '本会话系统提示词': 'Session system prompt',
@@ -106,7 +107,8 @@ var I18N = {
     '已拦截一次撤回，真实内容已本地保留': 'Recall intercepted; content kept locally',
 
     // ---------- 关于 ----------
-    'about.text': 'DeepSeek Enhance v{v} · everything runs locally, no data uploaded<br>Selector archive: docs/dom-research.md.'
+    'GitHub 仓库': 'GitHub repo',
+    '个人主页': 'Homepage'
   },
   _lang: null,
   resolve: function () {

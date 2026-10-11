@@ -59,8 +59,8 @@ var Panel = {
         '<div class="dse-p-sec">' + T('本会话上下文用量') + '</div>' +
         '<div class="dse-ctx"><div class="dse-ctx-track"><div class="dse-ctx-fill" data-ctx-fill></div></div>' +
         '<div class="dse-ctx-meta"><span data-ctx-text></span><span data-ctx-pct></span></div></div>' +
-        '<div class="dse-range-row"><span>' + T('上下文上限') + '</span><input type="range" min="32000" max="1024000" step="32000" data-bind="ctxLimitTokens"><span class="dse-range-val" data-val="ctxLimitTokens"></span></div>' +
-        '<div class="dse-row-desc" style="margin:-2px 0 6px">' + T('快速模式约 128K，专家模式(V3.2/V4)约 1M，按所用模型调整。') + '</div>' +
+        '<div class="dse-range-row"><span>' + T('提醒阈值') + '</span><input type="range" min="10" max="100" step="5" data-bind="ctxWarnPct"><span class="dse-range-val" data-val="ctxWarnPct"></span></div>' +
+        '<div class="dse-row-desc" style="margin:-2px 0 6px">' + T('当前模型上下文约 1M；用量达到该百分比时弹一次提醒。') + '</div>' +
         '<button class="dse-btn ghost" data-act="resetCtx" style="width:100%">' + T('立即重新统计（拉取本会话历史）') + '</button>' +
       '</div>' +
 
@@ -96,7 +96,10 @@ var Panel = {
           '<button data-v="auto">' + T('自动') + '</button><button data-v="zh">中文</button><button data-v="en">English</button></div>' +
         '<div class="dse-row-desc" style="margin:8px 0">' + T('界面语言（跟随系统 / 中文 / English）') + '</div>' +
         '<div class="dse-p-sec">' + T('关于') + '</div>' +
-        '<div class="dse-row-desc">' + DSE.t('about.text', { v: DSE.version }) + '</div>' +
+        '<div class="dse-links">' +
+          '<a class="dse-link" href="https://github.com/Hiweny/deepseek-enhance" target="_blank" rel="noopener noreferrer">' + T('GitHub 仓库') + '</a>' +
+          '<a class="dse-link" href="https://hiweny.github.io/Hiweny-s-web/" target="_blank" rel="noopener noreferrer">' + T('个人主页') + '</a>' +
+        '</div>' +
       '</div>' +
 
       '</div>';
@@ -179,7 +182,7 @@ var Panel = {
   },
 
   fmtLimit: function (path, v) {
-    if (path === 'ctxLimitTokens') return v >= 1000 ? (v / 1000) + 'K' : String(v);
+    if (path === 'ctxWarnPct') return v + '%';
     return String(v);
   },
 
@@ -237,9 +240,9 @@ var Panel = {
     if (!fill) return;
     fill.style.width = u.pct + '%';
     fill.className = 'dse-ctx-fill ' + (u.level === 'danger' ? 'danger' : u.level === 'warn' ? 'warn' : '');
-    var k = function (n) { return n >= 1000 ? (n / 1000).toFixed(0) + 'K' : String(n); };
+    var k = function (n) { return n >= 1048576 ? (n / 1048576).toFixed(0) + 'M' : (n >= 1000 ? (n / 1000).toFixed(0) + 'K' : String(n)); };
     this.el.querySelector('[data-ctx-text]').textContent =
-      DSE.t('约') + ' ' + k(u.used) + ' / ' + k(u.limit) + (u.source === 'estimate' ? DSE.t('（估算）') : '') + (u.pct >= 75 ? DSE.t('（建议新对话）') : '');
+      DSE.t('约') + ' ' + k(u.used) + ' / ' + k(u.limit) + (u.source === 'estimate' ? DSE.t('（估算）') : '') + (u.pct >= u.warnPct ? DSE.t('（已达提醒阈值）') : '');
     this.el.querySelector('[data-ctx-pct]').textContent = u.pct + '%';
     var hist = DSE.modules.antiRecall.getHistory(Utils.currentSid());
     var recalled = hist.filter(function (h) { return h.recalled && !h.serverHas && !h.backfilled; }).length;
