@@ -1,6 +1,12 @@
 package com.deepsleep.app;
 
 import android.annotation.SuppressLint;
+import android.app.AlertDialog;
+import android.content.ClipData;
+import android.provider.MediaStore;
+import android.widget.Toast;
+import androidx.core.content.FileProvider;
+import java.io.File;
 import android.app.Activity;
 import android.content.Intent;
 import android.content.pm.PackageManager;
@@ -46,6 +52,9 @@ public class MainActivity extends Activity {
     private static final String HOME = "https://chat.deepseek.com/";
     private static final int FILE_CHOOSER_CODE = 1001;
     private static final int PERM_CODE = 1002;
+    private static final int CAMERA_CAPTURE_CODE = 1003;
+    private static final int VIDEO_CAPTURE_CODE = 1004;
+    private static final int CAPTURE_PERM_CODE = 1005;
 
     private FrameLayout root;
     private ImageView splashLogo;
@@ -54,6 +63,10 @@ public class MainActivity extends Activity {
     private ValueCallback<Uri[]> filePathCallback;
     private boolean splashCleared = false;
     private String sharedText = null;
+    // 附件三选一：媒体选择工具的 Intent、待处理的拍照/录像类型与输出 Uri
+    private Intent pendingPickerIntent;
+    private int pendingCaptureType = 0;   // 0=无 1=照片 2=视频
+    private Uri pendingCaptureUri;
 
     // 键盘三通道：IME 动画期只做 GPU 位移（不逐帧 resize，杜绝卡顿/黑缝），动画结束落一次布局；
     // 现代 insets 与全局布局测量为无动画 ROM 兜底
@@ -220,13 +233,11 @@ public class MainActivity extends Activity {
             public boolean onShowFileChooser(WebView view, ValueCallback<Uri[]> cb, FileChooserParams params) {
                 if (filePathCallback != null) filePathCallback.onReceiveValue(null);
                 filePathCallback = cb;
-                Intent intent = params.createIntent();
-                try {
-                    startActivityForResult(Intent.createChooser(intent, "选择文件"), FILE_CHOOSER_CODE);
-                } catch (Exception e) {
-                    filePathCallback = null;
-                    return false;
-                }
+                pendingCaptureType = 0;
+                pendingCaptureUri = null;
+                try { pendingPickerIntent = params.createIntent(); }
+                catch (Exception e) { pendingPickerIntent = null; }
+                showAttachmentOptions();
                 return true;
             }
 
@@ -459,11 +470,101 @@ public class MainActivity extends Activity {
     protected void onActivityResult(int requestCode, int resultCode, Intent data) {
         super.onActivityResult(requestCode, resultCode, data);
         if (requestCode == FILE_CHOOSER_CODE) {
-            if (filePathCallback == null) return;
             Uri[] result = (data == null || resultCode != RESULT_OK) ? null
                     : WebChromeClient.FileChooserParams.parseResult(resultCode, data);
+            finishFileChooser(result);
+        } else if (requestCode == CAMERA_CAPTURE_CODE) {
+            Uri[] result = (resultCode == RESULT_OK && pendingCaptureUri != null)
+                    ? new Uri[]{pendingCaptureUri} : null;
+            finishFileChooser(result);
+        } else if (requestCode == VIDEO_CAPTURE_CODE) {
+            Uri uri = null;
+            if (resultCode == RESULT_OK) {
+                uri = (data != null && data.getData() != null) ? data.getData() : pendingCaptureUri;
+            }
+            finishFileChooser(uri != null ? new Uri[]{uri} : null);
+        }
+    }
+
+    /* ---------------- 附件：媒体 / 相机 / 摄像机 三选一 ---------------- */
+
+    private void showAttachmentOptions() {
+        final String[] items = {"媒体选择工具", "相机", "摄像机"};
+        try {
+            new AlertDialog.Builder(this)
+                    .setTitle("添加附件")
+                    .setItems(items, (d, which) -> {
+                        if (which == 0) launchPicker();
+                        else if (which == 1) startCapture(1);
+                        else startCapture(2);
+                    })
+                    .setOnCancelListener(d -> finishFileChooser(null))
+                    .show();
+        } catch (Exception e) {
+            finishFileChooser(null);
+        }
+    }
+
+    private void launchPicker() {
+        Intent i = pendingPickerIntent;
+        if (i == null) { finishFileChooser(null); return; }
+        try { startActivityForResult(i, FILE_CHOOSER_CODE); }
+        catch (Exception e) { finishFileChooser(null); }
+    }
+
+    private void startCapture(int type) {
+        // 清单声明了 CAMERA：未授权时直接调 ACTION_IMAGE_CAPTURE 会抛 SecurityException，必须先拿权限
+        if (checkSelfPermission(android.Manifest.permission.CAMERA) != PackageManager.PERMISSION_GRANTED) {
+            pendingCaptureType = type;
+            try { requestPermissions(new String[]{android.Manifest.permission.CAMERA}, CAPTURE_PERM_CODE); }
+            catch (Exception e) { finishFileChooser(null); }
+            return;
+        }
+        launchCapture(type);
+    }
+
+    private void launchCapture(int type) {
+        try {
+            File dir = new File(getCacheDir(), "captures");
+            if (!dir.exists() && !dir.mkdirs()) { finishFileChooser(null); return; }
+            File out = new File(dir, (type == 1 ? "photo_" : "video_")
+                    + System.currentTimeMillis() + (type == 1 ? ".jpg" : ".mp4"));
+            Uri uri = FileProvider.getUriForFile(this, getPackageName() + ".fileprovider", out);
+            Intent i = new Intent(type == 1 ? MediaStore.ACTION_IMAGE_CAPTURE : MediaStore.ACTION_VIDEO_CAPTURE);
+            i.putExtra(MediaStore.EXTRA_OUTPUT, uri);
+            i.addFlags(Intent.FLAG_GRANT_WRITE_URI_PERMISSION | Intent.FLAG_GRANT_READ_URI_PERMISSION);
+            // 兼容部分相机应用：再用 ClipData 显式授予一次写权限
+            i.setClipData(ClipData.newRawUri("", uri));
+            i.addFlags(Intent.FLAG_GRANT_WRITE_URI_PERMISSION | Intent.FLAG_GRANT_READ_URI_PERMISSION);
+            pendingCaptureUri = uri;
+            // 不用 resolveActivity 判断（Android 11+ 包可见性会误判为 null），直接启动并捕获异常
+            startActivityForResult(i, type == 1 ? CAMERA_CAPTURE_CODE : VIDEO_CAPTURE_CODE);
+        } catch (Exception e) {
+            Toast.makeText(this, "未找到可用的相机应用", Toast.LENGTH_SHORT).show();
+            finishFileChooser(null);
+        }
+    }
+
+    private void finishFileChooser(Uri[] result) {
+        if (filePathCallback != null) {
             filePathCallback.onReceiveValue(result);
             filePathCallback = null;
+        }
+        pendingCaptureType = 0;
+        pendingCaptureUri = null;
+        pendingPickerIntent = null;
+    }
+
+    @Override
+    public void onRequestPermissionsResult(int requestCode, String[] permissions, int[] grantResults) {
+        super.onRequestPermissionsResult(requestCode, permissions, grantResults);
+        if (requestCode != CAPTURE_PERM_CODE) return;
+        boolean granted = grantResults.length > 0 && grantResults[0] == PackageManager.PERMISSION_GRANTED;
+        if (granted && pendingCaptureType != 0) {
+            launchCapture(pendingCaptureType);
+        } else {
+            Toast.makeText(this, "需要相机权限才能拍照", Toast.LENGTH_SHORT).show();
+            finishFileChooser(null);
         }
     }
 

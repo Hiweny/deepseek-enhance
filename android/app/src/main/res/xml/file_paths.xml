@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 相机/摄像机把结果写入 App 私有缓存；WebView 再以 content:// 读取上传 -->
+<paths xmlns:android="http://schemas.android.com/apk/res/android">
+    <cache-path name="captures" path="captures/" />
+</paths>
