@@ -9,6 +9,7 @@ import androidx.core.content.FileProvider;
 import java.io.File;
 import android.app.Activity;
 import android.content.Intent;
+import android.content.SharedPreferences;
 import android.content.pm.PackageManager;
 import android.content.res.Configuration;
 import android.graphics.Rect;
@@ -56,6 +57,12 @@ public class MainActivity extends Activity {
     private static final int VIDEO_CAPTURE_CODE = 1004;
     private static final int CAPTURE_PERM_CODE = 1005;
 
+    // 启动行为：APK 专属偏好（默认关闭 = 每次打开都是新对话）
+    private static final String PREFS = "dse_apk_prefs";
+    private static final String K_RESUME = "resume_last_chat";
+    private static final String K_SID = "last_sid";
+    private static final String SID_RE = "[A-Za-z0-9_-]{6,120}";
+
     private FrameLayout root;
     private ImageView splashLogo;
     private WebView web;
@@ -67,6 +74,9 @@ public class MainActivity extends Activity {
     private Intent pendingPickerIntent;
     private int pendingCaptureType = 0;   // 0=无 1=照片 2=视频
     private Uri pendingCaptureUri;
+    private SharedPreferences prefs;
+    private String pendingResumeSid = null;   // 本次启动尝试恢复的会话 id（失败兜底用）
+    private boolean resumeFallbackUsed = false;
 
     // 键盘三通道：IME 动画期只做 GPU 位移（不逐帧 resize，杜绝卡顿/黑缝），动画结束落一次布局；
     // 现代 insets 与全局布局测量为无动画 ROM 兜底
@@ -115,12 +125,35 @@ public class MainActivity extends Activity {
             sharedText = null;
             return t == null ? "" : t;
         }
+
+        /** 页面每次切换对话时上报当前会话 id（新对话上报空串）。空/非法值一律归零，避免脏数据。 */
+        @JavascriptInterface
+        public void saveSession(String sid) {
+            try {
+                String v = sid == null ? "" : sid.trim();
+                if (!v.isEmpty() && !v.matches(SID_RE)) v = "";
+                if (prefs == null) return;
+                if (v.equals(prefs.getString(K_SID, ""))) return;
+                prefs.edit().putString(K_SID, v).apply();
+            } catch (Exception ignored) { }
+        }
+
+        @JavascriptInterface
+        public boolean resumeEnabled() {
+            try { return prefs != null && prefs.getBoolean(K_RESUME, false); } catch (Exception e) { return false; }
+        }
+
+        @JavascriptInterface
+        public void setResume(boolean on) {
+            try { if (prefs != null) prefs.edit().putBoolean(K_RESUME, on).apply(); } catch (Exception ignored) { }
+        }
     }
 
     @SuppressLint("SetJavaScriptEnabled")
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
+        prefs = getSharedPreferences(PREFS, MODE_PRIVATE);
         // 清掉上次会话遗留的现拍/现录缓存（App 私有目录，不在相册）
         cleanupCaptures(true);
         requestWindowFeature(Window.FEATURE_NO_TITLE);
@@ -217,6 +250,17 @@ public class MainActivity extends Activity {
             }
 
             @Override
+            public void onReceivedError(WebView view, WebResourceRequest request,
+                                        android.webkit.WebResourceError error) {
+                // 恢复上次对话时若主框架加载失败（会话被删/网络异常），退回到首页，绝不卡死
+                if (request.isForMainFrame() && pendingResumeSid != null && !resumeFallbackUsed) {
+                    resumeFallbackUsed = true;
+                    pendingResumeSid = null;
+                    view.loadUrl(HOME);
+                }
+            }
+
+            @Override
             public boolean shouldOverrideUrlLoading(WebView view, WebResourceRequest request) {
                 Uri u = request.getUrl();
                 String scheme = u.getScheme() == null ? "" : u.getScheme();
@@ -266,10 +310,27 @@ public class MainActivity extends Activity {
         });
 
         if (savedInstanceState == null) {
-            web.loadUrl(HOME);
+            web.loadUrl(startUrl());
         } else {
             web.restoreState(savedInstanceState);
         }
+    }
+
+    /**
+     * 冷启动入口：默认打开新对话；若用户在设置里开启「启动时恢复上次对话」且记录了有效会话 id，
+     * 直接深链到 https://chat.deepseek.com/a/chat/s/{sid}（官网支持该直达路径）。
+     */
+    private String startUrl() {
+        try {
+            if (prefs != null && prefs.getBoolean(K_RESUME, false)) {
+                String sid = prefs.getString(K_SID, "");
+                if (sid != null && sid.matches(SID_RE)) {
+                    pendingResumeSid = sid;
+                    return HOME + "a/chat/s/" + sid;
+                }
+            }
+        } catch (Exception ignored) { }
+        return HOME;
     }
 
     private int dp(int v) { return Math.round(v * getResources().getDisplayMetrics().density); }
