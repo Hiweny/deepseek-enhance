@@ -47,9 +47,9 @@ final class InlineJs {
                 // 虚拟列表禁止过度滚动连锁（避免误触刷新/露底）；整页也禁止回弹露底
                 + ".ds-virtual-list{overscroll-behavior:contain}"
                 + "html,body{overscroll-behavior:none}"
-                // 输入聚焦（含长文本粘贴）期间暂停输入框磨砂实时采样，改近不透明底色兜底，失焦恢复，避免逐帧重采样卡死
-                + "body.dse-input-frosted ._77cefa5:focus-within{backdrop-filter:none!important;-webkit-backdrop-filter:none!important;background:rgba(246,248,252,.97)!important}"
-                + "body.dark.dse-input-frosted ._77cefa5:focus-within{background:rgba(33,35,43,.97)!important}"
+                // 输入框磨砂：默认聚焦也保留真磨砂；仅当检测到持续掉帧时才降级为近不透明底（见下方自适应脚本）
+                + "body.dse-frost-lite.dse-input-frosted ._77cefa5{backdrop-filter:none!important;-webkit-backdrop-filter:none!important;background:rgba(246,248,252,.97)!important}"
+                + "body.dark.dse-frost-lite.dse-input-frosted ._77cefa5{background:rgba(33,35,43,.97)!important}"
                 + "';"
                 + "var stableH=0;"
                 + "function dseSyncH(force){var h=window.visualViewport?window.visualViewport.height:window.innerHeight;"
@@ -62,6 +62,16 @@ final class InlineJs {
                 + "window.addEventListener('orientationchange',function(){setTimeout(function(){dseSyncH(true)},350)});"
                 // document-start 极早期 head/documentElement 可能尚未建立，轮询挂载；400ms 后视口沉降再校准一次
                 + "(function mount(){var p=document.head||document.documentElement;if(!p){setTimeout(mount,4);return;}p.appendChild(st);dseSyncH(false);setTimeout(function(){dseSyncH(true)},400);})();"
+                + "})();"
+                // 输入框磨砂自适应：打字时采样帧间隔，持续掉帧（>32ms 累计 8 帧/1.2s）才降级，避免弱机卡顿
+                + "(function(){if(window.__DSE_FROST_ADAPT__)return;window.__DSE_FROST_ADAPT__=true;"
+                + "var armed=false,degraded=false,lastT=0,slow=0,startT=0,hits=0;"
+                + "function fb(){if(degraded)return;degraded=true;try{document.body.classList.add('dse-frost-lite');}catch(e){}}"
+                + "function tick(t){if(!armed)return;if(lastT&&(t-lastT)>32)slow++;lastT=t;"
+                + "if(t-startT>1200){armed=false;lastT=0;if(slow>=8){hits++;if(hits>=2)fb();}else{hits=0;}slow=0;return;}requestAnimationFrame(tick);}"
+                + "function arm(){if(degraded||armed)return;armed=true;slow=0;lastT=0;startT=performance.now();requestAnimationFrame(tick);}"
+                + "document.addEventListener('input',function(e){var t=e.target;"
+                + "if(t&&t.tagName==='TEXTAREA'&&!(t.closest&&t.closest('#dse-panel')))arm();},true);"
                 + "})();"
                 // 主题跟随系统
                 + "try{var KEY='__appKit_@deepseek/chat_themePreference';"

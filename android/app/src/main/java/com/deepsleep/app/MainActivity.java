@@ -63,7 +63,7 @@ public class MainActivity extends Activity {
     private ValueCallback<Uri[]> filePathCallback;
     private boolean splashCleared = false;
     private String sharedText = null;
-    // 附件三选一：媒体选择工具的 Intent、待处理的拍照/录像类型与输出 Uri
+    // 附件二选一：媒体选择工具的 Intent、待处理的拍照类型与输出 Uri
     private Intent pendingPickerIntent;
     private int pendingCaptureType = 0;   // 0=无 1=照片 2=视频
     private Uri pendingCaptureUri;
@@ -121,6 +121,8 @@ public class MainActivity extends Activity {
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
+        // 清掉上次会话遗留的现拍/现录缓存（App 私有目录，不在相册）
+        cleanupCaptures(true);
         requestWindowFeature(Window.FEATURE_NO_TITLE);
 
         if (Intent.ACTION_SEND.equals(getIntent().getAction()) && getIntent().getType() != null
@@ -233,6 +235,7 @@ public class MainActivity extends Activity {
             public boolean onShowFileChooser(WebView view, ValueCallback<Uri[]> cb, FileChooserParams params) {
                 if (filePathCallback != null) filePathCallback.onReceiveValue(null);
                 filePathCallback = cb;
+                cleanupCaptures(false);
                 pendingCaptureType = 0;
                 pendingCaptureUri = null;
                 try { pendingPickerIntent = params.createIntent(); }
@@ -486,17 +489,16 @@ public class MainActivity extends Activity {
         }
     }
 
-    /* ---------------- 附件：媒体 / 相机 / 摄像机 三选一 ---------------- */
+    /* ---------------- 附件：媒体 / 相机 二选一 ---------------- */
 
     private void showAttachmentOptions() {
-        final String[] items = {"媒体选择工具", "相机", "摄像机"};
+        final String[] items = {"媒体选择工具", "相机"};
         try {
             new AlertDialog.Builder(this)
                     .setTitle("添加附件")
                     .setItems(items, (d, which) -> {
                         if (which == 0) launchPicker();
-                        else if (which == 1) startCapture(1);
-                        else startCapture(2);
+                        else startCapture(1);
                     })
                     .setOnCancelListener(d -> finishFileChooser(null))
                     .show();
@@ -543,6 +545,20 @@ public class MainActivity extends Activity {
             Toast.makeText(this, "未找到可用的相机应用", Toast.LENGTH_SHORT).show();
             finishFileChooser(null);
         }
+    }
+
+    /** 清理现拍/现录的临时文件：all=true 全清；否则只删超过 24h 的 */
+    private void cleanupCaptures(boolean all) {
+        try {
+            File dir = new File(getCacheDir(), "captures");
+            if (!dir.isDirectory()) return;
+            File[] files = dir.listFiles();
+            if (files == null) return;
+            long now = System.currentTimeMillis();
+            for (File f : files) {
+                if (all || now - f.lastModified() > 24L * 60 * 60 * 1000) f.delete();
+            }
+        } catch (Exception ignored) { }
     }
 
     private void finishFileChooser(Uri[] result) {
