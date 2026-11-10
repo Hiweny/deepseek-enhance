@@ -101,13 +101,23 @@ def main():
             url = c.eval("location.href")
             if "sign_in" in (url or ""):
                 print("NOT LOGGED IN:", name, url, flush=True)
+            # 关 Cookie 弹窗
+            c.eval("""(()=>{const btns=[...document.querySelectorAll('button,div[role=button]')];
+              const b=btns.find(x=>/Accept all|Necessary|同意|接受|Accept/i.test(x.innerText||''));
+              if(b)b.click();})()""")
+            time.sleep(1.5)
             c.eval("try{if(window.DSENative&&DSENative.setMaidSkin)DSENative.setMaidSkin(true);}catch(e){}")
             c.eval("try{if(window.__dseMaidApply)window.__dseMaidApply(true);}catch(e){}")
             time.sleep(3)
             c.eval("try{if(window.__dseMaidApply)window.__dseMaidApply(true);}catch(e){}")
             time.sleep(2)
             ok = c.shot(os.path.join(OUT, name + ".png"))
-            print("shot", name, ok, url, flush=True)
+            diag = c.eval("""(()=>{const l=document.getElementById('dse-maid-link');
+              let rules=0; try{for(const s of document.styleSheets){if(s.href&&s.href.indexOf('dse-maid')>=0)rules=s.cssRules.length;}}catch(e){}
+              return JSON.stringify({link:!!l, href:l?l.href:'', stage:!!document.getElementById('dse-maid-stage'),
+                bodyCls:document.body.className, attr:document.documentElement.getAttribute('data-dse-maid'),
+                rules:rules, apply:typeof window.__dseMaidApply, skin:typeof window.DSENative!=='undefined'?DSENative.maidSkin():null});})()""")
+            print("shot", name, ok, url, "diag:", diag, flush=True)
             # 侧栏展开
             try:
                 if c.eval("()=>{const e=document.querySelector('.dc04ec1d');return !e||e.getBoundingClientRect().width<100}") in (True,):
