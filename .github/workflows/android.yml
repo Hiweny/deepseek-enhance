@@ -103,7 +103,15 @@ jobs:
     needs: build
     runs-on: ubuntu-latest
     continue-on-error: true
+    env:
+      DS_STATE_B64: ${{ secrets.DS_STATE_B64 }}
     steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install playwright (CDP client only)
+        run: pip install -q playwright
       - uses: actions/download-artifact@v4
         with:
           name: DeepSleep-apk
@@ -133,6 +141,9 @@ jobs:
             adb pull /sdcard/shot.png apk-screenshot.png
             echo "=== process alive? (pid) ==="; adb shell pidof com.deepsleep.app
             PID=$(adb shell pidof com.deepsleep.app | tr -d '\r'); adb forward tcp:9222 localabstract:webview_devtools_remote_$PID; echo "=== webview devtools targets ==="; curl -s --max-time 6 http://127.0.0.1:9222/json
+            echo "=== visual shots ==="
+            rm -rf /tmp/shots; python3 tools/visual-shots.py || echo "visual shots failed"
+            ls -la /tmp/shots 2>/dev/null | head -20
             echo "=== done ==="
             exit 0
 
@@ -141,6 +152,13 @@ jobs:
         with:
           name: apk-screenshot
           path: apk-screenshot.png
+          if-no-files-found: ignore
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: visual-shots
+          path: /tmp/shots
           if-no-files-found: ignore
 
   release:

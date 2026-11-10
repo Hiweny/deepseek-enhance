@@ -400,12 +400,12 @@ html[data-dse-maid] body .aaff8b8f::before {
   content: "";
   position: absolute;
   box-sizing: border-box;
-  inset: -20px -14px -16px;
+  inset: -10px -7px -8px;
   border-style: solid;
-  border-width: 44px 34px 32px;
+  border-width: 30px 24px 24px;
   border-image-source: url("__BASE__composer-frame-shell.webp");
   border-image-slice: 170 120 115 120;
-  border-image-width: 44px 34px 32px 34px;
+  border-image-width: 30px 24px 24px 24px;
   border-image-repeat: round;
   background-image:
     url("__BASE__ribbon-left-cap.webp"),
@@ -426,7 +426,7 @@ html[data-dse-maid] body .aaff8b8f::before {
   background-origin: border-box;
   background-clip: border-box;
   pointer-events: none;
-  z-index: -1;
+  z-index: 3;
   filter: saturate(1.3) contrast(1.1) drop-shadow(0 2px 6px rgba(90, 66, 20, .2));
 }
 
@@ -435,12 +435,12 @@ html[data-dse-maid] body .aaff8b8f::after {
   content: "";
   position: absolute;
   left: 50%;
-  top: -20px;
+  top: -18px;
   width: 150px;
-  height: 66px;
+  height: 64px;
   margin-left: -90px;
   pointer-events: none;
-  z-index: 0;
+  z-index: 4;
   background: url("__BASE__bow.webp") center top / contain no-repeat;
   filter: drop-shadow(0 4px 10px rgba(4, 11, 35, .32));
 }
@@ -631,14 +631,14 @@ html[data-dse-maid] body #dse-bg-mask {
     background-size: 100px 100px;
   }
   html[data-dse-maid] body .aaff8b8f::before {
-    inset: -12px -8px -10px;
-    border-width: 36px 28px 26px;
-    border-image-width: 36px 28px 26px 28px;
+    inset: -8px -6px -7px;
+    border-width: 24px 20px 20px;
+    border-image-width: 24px 20px 20px 20px;
   }
   html[data-dse-maid] body .aaff8b8f::after {
-    top: -16px;
+    top: -14px;
     width: 112px;
-    height: 50px;
+    height: 48px;
     margin-left: -67px;
     background-size:
       auto 46px,
