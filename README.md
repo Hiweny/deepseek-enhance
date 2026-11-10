@@ -2,6 +2,8 @@
 
 面向 [chat.deepseek.com](https://chat.deepseek.com/) 的油猴增强脚本：界面美化、水玻璃气泡、防撤回、按会话隔离的系统提示词、思考自动折叠、上下文用量等。手机浏览器（Kiwi / Edge / Safari 油猴扩展）与桌面端均适配，明暗双色自适应。
 
+Android 套壳（DeepSleep）另有独家皮肤：**深海女仆工坊**（深海蓝蕾丝 + 宫殿场景 + 双鲸鱼娘女仆立绘，亮/暗两套自动跟随系统）。
+
 ## 安装
 
 先安装 Tampermonkey（或兼容用户脚本管理器），再点击安装：
@@ -23,6 +25,7 @@
 - **LaTeX 公式渲染**：官网默认不渲染 `\( \)`、`\[ \]`、`$...$`，脚本内置**离线 KaTeX**（字体全部内联，无外部请求），流式输出结束即渲染，行间公式可横向滚动，解析失败不炸排版。
 - 可隐藏“内容由 AI 生成”标识。
 - 仅移除移动端欢迎页的“下载应用”按钮，**保留**新建对话、展开侧栏按钮。
+- **深海女仆工坊主题（APK 独家）**：设置面板「外观 → 主题」里切换「默认 / 深海女仆工坊」。开启后整站换肤——宫殿背景（白天/夜晚两套）、左右鲸鱼娘女仆立绘、深海蓝玻璃侧栏、金线蕾丝输入框、官方设置弹窗、本插件设置面板全部覆盖；自动跟随系统深浅色，可随时一键切回默认。
 
 ### 对话
 - **思考自动折叠**：独立开关，默认开启，自动收起“深度思考”过程；折叠头与展开内容统一为磨砂卡片，用户手动展开后不再自动收起。折叠采用**纯 CSS 隐藏**（不再点击站点折叠头）——长对话向上滚动、虚拟列表重挂载消息时不会再因消息高度突变而“来回跳 / 一下冲到最开头”。
@@ -58,6 +61,7 @@ src/
   settings/panel.js     设置面板
   main.js / footer.js   装载顺序与收尾
 vendor/katex*           KaTeX 离线运行库与内联字体 bundle（tools/build-katex.js 生成）
+skin/maid-atelier/     深海女仆工坊皮肤源（占位版 CSS + 原始素材，供 APK / 油猴复用）
 build.js                一键拼接：根目录 user.js / meta.js + dist/inject.js
 dist/inject.js          无 GM 环境注入版（供 WebView 套壳使用）
 android/                DeepSleep 原生 WebView 套壳工程
@@ -87,6 +91,7 @@ node build.js               # 拼接出最终脚本
 - **流畅度（v8.3.6 专项）**：`largeHeap` 扩大堆；首个 WebView 创建前反射 Chromium `CommandLine` 打开 `--ignore-gpu-blocklist/--enable-gpu-rasterization/--enable-zero-copy/--enable-quic`（失败静默）；`RENDERER_PRIORITY_IMPORTANT` 渲染进程不被降频；显式硬件层 + `setOffscreenPreRaster(true)` 离屏预光栅化 + 关闭边缘回弹；注入侧把气泡/正文提升为独立合成层（`translateZ(0)`、关闭属性过渡），虚拟列表 `overscroll-behavior:contain`；**输入框聚焦/粘贴期间暂停磨砂 backdrop-filter 实时采样**（长文本粘贴时 textarea 逐帧增高 + 全屏模糊重采样是卡死主因），失焦恢复；APK 出厂默认（顶栏背景透出/全屏按钮关/时间注入开）用版本化迁移只强制一次，老版本升级也会纠正、之后用户自改不覆盖；
 - **开屏页**：居中睡鲸 logo，底色随系统明暗（values-night），首屏渲染后淡出；
 - **主题跟随系统**：document-start 按系统明暗写入 DeepSeek 主题键，系统切换后自动刷新；
+- **深海女仆工坊皮肤（v8.6.0）**：素材移植自 [Small-tailqwq/dsh-deep-whale](https://github.com/Small-tailqwq/dsh-deep-whale) 的 `maid-atelier`（美术资源 CC BY-NC-SA 4.0、署名链见该仓库 NOTICE），CSS 按 chat.deepseek.com 的真实 DOM 重写。样式表放在 `android/app/src/main/assets/dse-theme/dse-maid.css`（图片以 base64 内联，离线可用、零外部请求），由 `WebViewAssetLoader` 以 `https://appassets.androidplatform.net/assets/` 同源提供，注入只写一个 `<link>` 与两个立绘层，避免超大字符串注入；开关状态存 SharedPreferences（默认关闭），React 重写 `body.class` 时有守护补回；素材与「占位版」CSS 另存 `skin/maid-atelier/`，方便后续油猴端复用；
 - 保留文件上传（识图）、摄像头/麦克风按需授权、网页内返回。
 
 ```bash

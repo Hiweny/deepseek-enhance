@@ -39,6 +39,7 @@ import androidx.core.view.ViewCompat;
 import androidx.core.view.WindowCompat;
 import androidx.core.view.WindowInsetsAnimationCompat;
 import androidx.core.view.WindowInsetsCompat;
+import androidx.webkit.WebViewAssetLoader;
 import androidx.webkit.WebViewCompat;
 import androidx.webkit.WebViewFeature;
 
@@ -77,6 +78,9 @@ public class MainActivity extends Activity {
     private SharedPreferences prefs;
     private String pendingResumeSid = null;   // 本次启动尝试恢复的会话 id（失败兜底用）
     private boolean resumeFallbackUsed = false;
+    // 皮肤资源（assets/dse-theme/*）由 WebViewAssetLoader 以 https 同源形式提供，
+    // 避免 base64 超大字符串注入，也绕开页面的混合内容限制。
+    private WebViewAssetLoader assetLoader;
 
     // 键盘三通道：IME 动画期只做 GPU 位移（不逐帧 resize，杜绝卡顿/黑缝），动画结束落一次布局；
     // 现代 insets 与全局布局测量为无动画 ROM 兜底
@@ -143,6 +147,17 @@ public class MainActivity extends Activity {
             try { return prefs != null && prefs.getBoolean(K_RESUME, false); } catch (Exception e) { return false; }
         }
 
+        /** 深海女仆工坊皮肤开关（APK 专属） */
+        @JavascriptInterface
+        public boolean maidSkin() {
+            try { return prefs != null && prefs.getBoolean("maid_skin", false); } catch (Exception e) { return false; }
+        }
+
+        @JavascriptInterface
+        public void setMaidSkin(boolean on) {
+            try { if (prefs != null) prefs.edit().putBoolean("maid_skin", on).apply(); } catch (Exception ignored) { }
+        }
+
         @JavascriptInterface
         public void setResume(boolean on) {
             try { if (prefs != null) prefs.edit().putBoolean(K_RESUME, on).apply(); } catch (Exception ignored) { }
@@ -169,6 +184,10 @@ public class MainActivity extends Activity {
         // 窗口底色与页面严格一致，键盘动画/resize 露出的任何缝隙都不是黑色
         getWindow().setBackgroundDrawable(new ColorDrawable(pageBgColor()));
         applyImmersive();
+
+        assetLoader = new WebViewAssetLoader.Builder()
+                .addPathHandler("/assets/", new WebViewAssetLoader.AssetsPathHandler(this))
+                .build();
 
         root = new FrameLayout(this);
         root.setBackgroundColor(pageBgColor());
@@ -247,6 +266,14 @@ public class MainActivity extends Activity {
                 view.evaluateJavascript(
                         "(function(){try{var t=window.DSENative?DSENative.consumeShared():'';"
                         + "if(t&&window.__dseFillShared)window.__dseFillShared(t);}catch(e){}})();", null);
+            }
+
+            @Override
+            public android.webkit.WebResourceResponse shouldInterceptRequest(WebView view, WebResourceRequest request) {
+                try {
+                    if (assetLoader != null) return assetLoader.shouldInterceptRequest(request.getUrl());
+                } catch (Exception ignored) { }
+                return null;
             }
 
             @Override

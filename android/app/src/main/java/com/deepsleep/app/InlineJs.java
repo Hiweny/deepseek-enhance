@@ -122,7 +122,71 @@ final class InlineJs {
                 + "var n=0;var timer=setInterval(function(){n++;"
                 + "var t='';try{if(window.DSENative)t=DSENative.consumeShared()||'';}catch(e){}"
                 + "if(t)dseFill(t);if(n>40)clearInterval(timer);},300);"
-                + "window.__dseFillShared=dseFill;})();";
+                + "window.__dseFillShared=dseFill;})();"
+                + maidSkin();
+    }
+
+    /**
+     * APK 专属：深海女仆工坊皮肤（素材移植自 dsh-deep-whale / maid-atelier）。
+     * CSS 放在 assets/dse-theme/dse-maid.css，由 WebViewAssetLoader 以
+     * https://appassets.androidplatform.net/assets/ 提供，注入 link 即可。
+     * 开关状态存 SharedPreferences（maid_skin），默认关闭。
+     */
+    /**
+     * APK 专属：深海女仆工坊皮肤（素材移植自 dsh-deep-whale / maid-atelier 的 maid-atelier）。
+     * 样式表放 assets/dse-theme/dse-maid.css，由 WebViewAssetLoader 以
+     * https://appassets.androidplatform.net/assets/ 提供；这里只注入 link 与立绘层。
+     * 开关状态存 SharedPreferences（maid_skin），默认关闭。
+     */
+    static String maidSkin() {
+        return "\n"
++ "(function(){"
+                + "if(window.__DSE_MAID__)return;window.__DSE_MAID__=true;"
+                + "var LINK='https://appassets.androidplatform.net/assets/dse-theme/dse-maid.css';"
+                + "function natOn(){try{return !!(window.DSENative&&DSENative.maidSkin&&DSENative.maidSkin());}catch(e){return false;}}"
+                + "function mkStage(){if(document.getElementById('dse-maid-stage'))return;"
+                + "var st=document.createElement('div');st.id='dse-maid-stage';"
+                + "var a=document.createElement('div');a.className='maid-fig left';"
+                + "var b=document.createElement('div');b.className='maid-fig right';"
+                + "st.appendChild(a);st.appendChild(b);(document.body||document.documentElement).appendChild(st);}"
+                + "function apply(v){var de=document.documentElement,b=document.body;"
+                + "if(v){de.setAttribute('data-dse-maid','1');if(b)b.classList.add('dse-maid');"
+                + "if(!document.getElementById('dse-maid-link')){var l=document.createElement('link');l.id='dse-maid-link';l.rel='stylesheet';l.href=LINK;(document.head||de).appendChild(l);}"
+                + "mkStage();}"
+                + "else{de.removeAttribute('data-dse-maid');if(b)b.classList.remove('dse-maid');"
+                + "var lk=document.getElementById('dse-maid-link');if(lk&&lk.parentNode)lk.parentNode.removeChild(lk);"
+                + "var s2=document.getElementById('dse-maid-stage');if(s2&&s2.parentNode)s2.parentNode.removeChild(s2);}}"
+                + "window.__dseMaidApply=apply;"
+                + "function guard(){if(!natOn())return;var b=document.body;"
+                + "if(!document.documentElement.hasAttribute('data-dse-maid'))document.documentElement.setAttribute('data-dse-maid','1');"
+                + "if(b&&!b.classList.contains('dse-maid'))b.classList.add('dse-maid');"
+                + "if(!document.getElementById('dse-maid-link'))apply(true);"
+                + "if(!document.getElementById('dse-maid-stage'))mkStage();}"
+                + "setInterval(guard,1200);"
+                + "function boot(){if(natOn())apply(true);}"
+                + "if(document.body)boot();else setTimeout(boot,80);})();"
+                + "(function(){"
+                + "if(window.__DSE_MAID_UI__)return;window.__DSE_MAID_UI__=true;"
+                + "function isEn(){try{return !!(window.DSE&&DSE.i18n&&DSE.i18n.lang&&DSE.i18n.lang()==='en');}catch(e){return false;}}"
+                + "function cur(){try{return !!(window.DSENative&&DSENative.maidSkin&&DSENative.maidSkin());}catch(e){return false;}}"
+                + "function set(v){try{if(window.DSENative&&DSENative.setMaidSkin)DSENative.setMaidSkin(!!v);}catch(e){}if(window.__dseMaidApply)window.__dseMaidApply(!!v);}"
+                + "function build(){var page=document.querySelector('#dse-panel .dse-p-page[data-page=\"look\"]');if(!page)return;"
+                + "var old=document.getElementById('dse-apk-theme');if(old&&old.parentNode===page)return;"
+                + "if(old&&old.parentNode)old.parentNode.removeChild(old);"
+                + "var E=isEn(),on=cur();"
+                + "var w=document.createElement('div');w.id='dse-apk-theme';"
+                + "w.innerHTML='<div class=\"dse-p-title\">'+(E?'Theme':'主题')+'</div>'"
+                + "+'<div class=\"dse-seg dse-apk-theme-seg\"><button data-v=\"0\"'+(on?'':' class=\"dse-on\"')+'>'+(E?'Default':'默认')+'</button>'"
+                + "+'<button data-v=\"1\"'+(on?' class=\"dse-on\"':'')+'>'+(E?'Deep-sea maid':'深海女仆工坊')+'</button></div>'"
+                + "+'<div class=\"dse-row-desc\" style=\"margin:6px 0 10px\">'+(E?'Full-site skin, follows system light/dark.':'整站换肤，自动跟随系统深浅色')+'</div>';"
+                + "w.addEventListener('click',function(e){var t=e.target;if(!(t&&t.closest))return;"
+                + "var b=t.closest('.dse-apk-theme-seg button');if(!b)return;"
+                + "var v=b.getAttribute('data-v')==='1';"
+                + "var bs=w.querySelectorAll('.dse-apk-theme-seg button');for(var i=0;i<bs.length;i++){bs[i].classList.toggle('dse-on',bs[i]===b);}"
+                + "set(v);"
+                + "try{if(window.DSE&&DSE.utils&&DSE.utils.toast)DSE.utils.toast(v?(E?'Skin on':'已开启：深海女仆工坊'):(E?'Default theme':'已切回默认主题'));}catch(e2){}});"
+                + "page.insertBefore(w,page.firstChild);}"
+                + "setInterval(build,1000);})();";
     }
 
     static String early(boolean dark, String bg) {
