@@ -448,17 +448,18 @@ html[data-dse-maid] body .aaff8b8f::before {
   filter: saturate(1.3) contrast(1.1) drop-shadow(0 2px 6px rgba(90, 66, 20, .2));
 }
 
-/* 蝴蝶结：独立一层压在框顶正中，紧贴边框不留缝 */
+/* 蝴蝶结：绝对居中，压在框顶正中，紧贴边框不留缝 */
 html[data-dse-maid] body .aaff8b8f::after {
   content: "";
   position: absolute;
-  left: -14px;
-  right: -14px;
-  top: -22px;
+  left: 50%;
+  top: -20px;
+  width: 150px;
   height: 66px;
+  margin-left: -90px;
   pointer-events: none;
   z-index: 0;
-  background: url("__BASE__bow.webp") center top / auto 64px no-repeat;
+  background: url("__BASE__bow.webp") center top / contain no-repeat;
   filter: drop-shadow(0 4px 10px rgba(4, 11, 35, .32));
 }
 
@@ -678,8 +679,10 @@ html[data-dse-maid] body:not(.dark) #dse-maid-stage .maid-bottom-blur {
     border-image-width: 46px 34px 32px 34px;
   }
   html[data-dse-maid] body .aaff8b8f::after {
-    top: -46px;
-    height: 46px;
+    top: -16px;
+    width: 112px;
+    height: 50px;
+    margin-left: -67px;
     background-size:
       auto 46px,
       68px 21px,
