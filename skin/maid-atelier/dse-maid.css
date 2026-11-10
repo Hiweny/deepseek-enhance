@@ -317,8 +317,10 @@ html[data-dse-maid] body .ds-virtual-list-visible-items {
 }
 
 /* 助手消息：深海蓝实底卡 */
+html[data-dse-maid] body div[class*="assistant-message-main-content"],
 html[data-dse-maid] body .ds-assistant-message-main-content {
-  background: var(--maid-bubble-ai) !important;
+  background-image: linear-gradient(180deg, rgba(252, 253, 255, .94), rgba(238, 243, 253, .90)) !important;
+  background-color: transparent !important;
   -webkit-backdrop-filter: blur(16px) saturate(150%);
   backdrop-filter: blur(16px) saturate(150%);
   border: 0 !important;
@@ -330,7 +332,9 @@ html[data-dse-maid] body .ds-assistant-message-main-content {
     inset 0 -1px 0 rgba(82, 106, 168, .16),
     0 10px 28px rgba(15, 30, 72, .10) !important;
 }
+html[data-dse-maid] body.dark div[class*="assistant-message-main-content"],
 html[data-dse-maid] body.dark .ds-assistant-message-main-content {
+  background-image: linear-gradient(180deg, rgba(25, 42, 83, .94), rgba(12, 25, 60, .92)) !important;
   box-shadow:
     inset 0 0 0 1px rgba(211, 180, 119, .34),
     inset 0 1px 0 rgba(190, 206, 245, .18),
@@ -339,8 +343,10 @@ html[data-dse-maid] body.dark .ds-assistant-message-main-content {
 }
 
 /* 用户气泡 */
+html[data-dse-maid] body div[class*="fbb737a4"],
 html[data-dse-maid] body .fbb737a4 {
-  background: var(--maid-bubble-user) !important;
+  background-image: linear-gradient(180deg, rgba(226, 236, 252, .96), rgba(205, 221, 246, .94)) !important;
+  background-color: transparent !important;
   -webkit-backdrop-filter: blur(16px) saturate(160%);
   backdrop-filter: blur(16px) saturate(160%);
   border: 0 !important;
