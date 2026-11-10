@@ -86,14 +86,10 @@ html[data-dse-maid] body ._765a5cd {
 }
 
 /* ---------------- 皮肤装饰层（不动原布局） ---------------- */
-html[data-dse-maid] body #root {
-  position: relative;
-  z-index: 2;
-}
 #dse-maid-stage {
   position: fixed;
   inset: 0;
-  z-index: 1;
+  z-index: -1;
   pointer-events: none;
   overflow: hidden;
 }
