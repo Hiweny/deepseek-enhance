@@ -1,18 +1,17 @@
-"""在 Android 模拟器里通过 WebView CDP 注入登录态 + 开启皮肤，抓取多场景截图。
-需要环境变量 DS_STATE_B64（gzip+base64 的 Playwright storageState）。
+"""在 Android 模拟器里通过 WebView CDP（裸 websocket）注入登录态、开启皮肤并截图。
+需要 DS_STATE_B64（gzip+base64 的 storageState）；依赖 websocket-client。
 """
-import base64, gzip, json, os, sys, time
-from playwright.sync_api import sync_playwright
+import base64
+import gzip
+import json
+import os
+import time
+import urllib.request
+
+import websocket
 
 OUT = "/tmp/shots"
 os.makedirs(OUT, exist_ok=True)
-STATE = json.loads(gzip.decompress(base64.b64decode(os.environ["DS_STATE_B64"])).decode())
-LS = {}
-for origin in STATE.get("origins", []):
-    if "deepseek.com" in origin.get("origin", ""):
-        for item in origin.get("localStorage", []):
-            LS[item["name"]] = item["value"]
-COOKIES = [c for c in STATE.get("cookies", []) if "deepseek" in c.get("domain", "")]
 
 SCENES = [
     ("light_home", "light", ""),
@@ -21,53 +20,108 @@ SCENES = [
     ("dark_chat", "dark", "/a/chat/s/e1eae463-e4b1-4ed5-bdf3-018c323afbf2"),
 ]
 
+
+def targets():
+    with urllib.request.urlopen("http://127.0.0.1:9222/json", timeout=10) as r:
+        return json.loads(r.read().decode())
+
+
+class CDP:
+    def __init__(self, ws_url):
+        self.ws = websocket.create_connection(ws_url, timeout=30)
+        self.n = 0
+
+    def send(self, method, params=None):
+        self.n += 1
+        mid = self.n
+        self.ws.send(json.dumps({"id": mid, "method": method, "params": params or {}}))
+        deadline = time.time() + 60
+        while time.time() < deadline:
+            msg = json.loads(self.ws.recv())
+            if msg.get("id") == mid:
+                return msg
+        raise TimeoutError(method)
+
+    def eval(self, expr):
+        r = self.send("Runtime.evaluate", {"expression": expr, "returnByValue": True, "awaitPromise": True})
+        return r.get("result", {}).get("result", {}).get("value")
+
+    def shot(self, path):
+        r = self.send("Page.captureScreenshot", {"format": "png"})
+        data = r.get("result", {}).get("data")
+        if data:
+            open(path, "wb").write(base64.b64decode(data))
+            return True
+        return False
+
+    def close(self):
+        try:
+            self.ws.close()
+        except Exception:
+            pass
+
+
 def main():
-    with sync_playwright() as p:
-        b = p.chromium.connect_over_cdp("http://127.0.0.1:9222")
-        ctx = b.contexts[0]
-        pg = ctx.pages[0] if ctx.pages else ctx.new_page()
-        print("initial url:", pg.url, flush=True)
-        # 注入 cookies
-        cdp = ctx.new_cdp_session(pg)
-        for c in COOKIES:
+    state = json.loads(gzip.decompress(base64.b64decode(os.environ["DS_STATE_B64"])).decode())
+    ls = {}
+    for origin in state.get("origins", []):
+        if "deepseek.com" in origin.get("origin", ""):
+            for item in origin.get("localStorage", []):
+                ls[item["name"]] = item["value"]
+    cookies = [c for c in state.get("cookies", []) if "deepseek" in c.get("domain", "")]
+    print("localStorage keys:", len(ls), "cookies:", len(cookies), flush=True)
+
+    pages = [t for t in targets() if t.get("type") == "page"]
+    if not pages:
+        print("no page target", targets(), flush=True)
+        return
+    c = CDP(pages[0]["webSocketDebuggerUrl"])
+    c.send("Page.enable")
+    c.send("Runtime.enable")
+    print("initial url:", c.eval("location.href"), flush=True)
+
+    for ck in cookies:
+        c.send("Network.setCookie", {
+            "name": ck["name"], "value": ck["value"], "domain": ck["domain"],
+            "path": ck.get("path", "/"), "secure": bool(ck.get("secure")),
+            "httpOnly": bool(ck.get("httpOnly")),
+        })
+    # 先回首页注入 localStorage
+    c.send("Page.navigate", {"url": "https://chat.deepseek.com/"})
+    time.sleep(6)
+    js = "".join("try{localStorage.setItem(%s,%s)}catch(e){}" % (json.dumps(k), json.dumps(v)) for k, v in ls.items())
+    c.eval(js)
+
+    for name, theme, path in SCENES:
+        try:
+            c.eval("try{localStorage.setItem('__appKit_@deepseek/chat_themePreference',%s)}catch(e){}"
+                   % json.dumps(json.dumps({"value": theme, "__version": "0"})))
+            c.send("Page.navigate", {"url": "https://chat.deepseek.com" + path})
+            time.sleep(9)
+            url = c.eval("location.href")
+            if "sign_in" in (url or ""):
+                print("NOT LOGGED IN:", name, url, flush=True)
+            c.eval("try{if(window.DSENative&&DSENative.setMaidSkin)DSENative.setMaidSkin(true);}catch(e){}")
+            c.eval("try{if(window.__dseMaidApply)window.__dseMaidApply(true);}catch(e){}")
+            time.sleep(3)
+            c.eval("try{if(window.__dseMaidApply)window.__dseMaidApply(true);}catch(e){}")
+            time.sleep(2)
+            ok = c.shot(os.path.join(OUT, name + ".png"))
+            print("shot", name, ok, url, flush=True)
+            # 侧栏展开
             try:
-                cdp.send("Network.setCookie", {
-                    "name": c["name"], "value": c["value"], "domain": c["domain"],
-                    "path": c.get("path", "/"), "secure": bool(c.get("secure")),
-                    "httpOnly": bool(c.get("httpOnly")),
-                })
+                if c.eval("()=>{const e=document.querySelector('.dc04ec1d');return !e||e.getBoundingClientRect().width<100}") in (True,):
+                    box = c.eval("""()=>{const b=document.querySelector('.ds-button');if(!b)return null;const r=b.getBoundingClientRect();return [r.x+r.width/2, r.y+r.height/2];}""")
+                    if box:
+                        c.send("Input.dispatchMouseEvent", {"type": "mousePressed", "x": box[0], "y": box[1], "button": "left", "clickCount": 1})
+                        c.send("Input.dispatchMouseEvent", {"type": "mouseReleased", "x": box[0], "y": box[1], "button": "left", "clickCount": 1})
+                        time.sleep(2)
+                        c.shot(os.path.join(OUT, name + "_sidebar.png"))
             except Exception as e:
-                print("cookie fail", c.get("name"), e, flush=True)
-        # 注入 localStorage
-        pg.evaluate("""(ls)=>{for(const k in ls){try{localStorage.setItem(k, ls[k])}catch(e){}}}""", LS)
-        pg.wait_for_timeout(500)
-        for name, theme, path in SCENES:
-            try:
-                pg.evaluate("(t)=>localStorage.setItem('__appKit_@deepseek/chat_themePreference', JSON.stringify({value:t,__version:'0'}))", theme)
-                url = "https://chat.deepseek.com" + path
-                pg.goto(url, wait_until="domcontentloaded", timeout=90000)
-                pg.wait_for_timeout(7000)
-                if "sign_in" in pg.url:
-                    print("NOT LOGGED IN for", name, pg.url, flush=True)
-                # 开启皮肤
-                pg.evaluate("""()=>{try{if(window.DSENative&&DSENative.setMaidSkin)DSENative.setMaidSkin(true);}catch(e){}
-                  if(window.__dseMaidApply)window.__dseMaidApply(true);}""")
-                pg.wait_for_timeout(3000)
-                pg.evaluate("""()=>{if(window.__dseMaidApply)window.__dseMaidApply(true);}""")
-                pg.wait_for_timeout(2500)
-                pg.screenshot(path=os.path.join(OUT, name + ".png"))
-                print("shot", name, pg.url, flush=True)
-                # 侧栏（展开）
-                try:
-                    if pg.evaluate("()=>{const e=document.querySelector('.dc04ec1d');return !e||e.getBoundingClientRect().width<100}"):
-                        c = pg.evaluate("()=>{const b=document.querySelector('.ds-button');if(!b)return null;const r=b.getBoundingClientRect();return {x:Math.round(r.x+r.width/2),y:Math.round(r.y+r.height/2)}}")
-                        if c:
-                            pg.mouse.click(c["x"], c["y"]); pg.wait_for_timeout(1500)
-                            pg.screenshot(path=os.path.join(OUT, name + "_sidebar.png"))
-                except Exception as e:
-                    print("sidebar fail", e, flush=True)
-            except Exception as e:
-                print("scene fail", name, repr(e)[:200], flush=True)
-        b.close()
+                print("sidebar fail", name, repr(e)[:120], flush=True)
+        except Exception as e:
+            print("scene fail", name, repr(e)[:200], flush=True)
+    c.close()
+
 
 main()

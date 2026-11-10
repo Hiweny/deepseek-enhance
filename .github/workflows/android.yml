@@ -111,7 +111,7 @@ jobs:
         with:
           python-version: '3.12'
       - name: Install playwright (CDP client only)
-        run: pip install -q playwright
+        run: pip install -q websocket-client
       - uses: actions/download-artifact@v4
         with:
           name: DeepSleep-apk
