@@ -184,7 +184,7 @@ final class InlineJs {
                 + "window.__dseMaidApply=apply;"
                 + "function syncBubble(){var b=document.body;if(!b)return;var dk=b.classList.contains('dark');"
                 + "var bg=dk?'linear-gradient(180deg,rgba(25,42,83,.94),rgba(12,25,60,.92))':'linear-gradient(180deg,rgba(252,253,255,.94),rgba(238,243,253,.90))';"
-                + "var sh=dk?'inset 0 0 0 1px rgba(211,180,119,.38),inset 0 1px 0 rgba(190,206,245,.16),0 10px 28px rgba(0,0,0,.34)':'inset 0 0 0 1px rgba(197,164,104,.50),0 0 0 1px rgba(197,164,104,.30),inset 0 1px 0 rgba(255,255,255,.66),0 10px 26px rgba(15,30,72,.10)';"
+                + "var sh=dk?'inset 0 0 0 1px rgba(211,180,119,.38),inset 0 1px 0 rgba(190,206,245,.16),0 10px 28px rgba(0,0,0,.34)':'inset 0 0 0 1.5px rgba(197,164,104,.58),0 0 0 1px rgba(197,164,104,.30),inset 0 1px 0 rgba(255,255,255,.66),0 10px 26px rgba(15,30,72,.10)';"
                 + "var els=document.querySelectorAll('[class*=assistant-message-main-content]');"
                 + "for(var i=0;i<els.length;i++){var e=els[i];var tag=dk?'d':'l';"
                 + "if(e.getAttribute('data-dse-bub')===tag)continue;"

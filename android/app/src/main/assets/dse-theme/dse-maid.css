@@ -418,13 +418,14 @@ html[data-dse-maid] body ._871cbca,
 html[data-dse-maid] body .d72636e2 {
   background-color: transparent !important;
 }
+/* 内层壳透明：外观统一由外层卡承担，避免"框 → 缝 → 白卡"的断层 */
 html[data-dse-maid] body ._77cefa5 {
-  background: rgba(250, 252, 255, .97) !important;
-  box-shadow: inset 0 0 0 1px rgba(197, 164, 104, .34), 0 14px 40px rgba(15, 30, 72, .18), inset 0 1px 0 rgba(255, 255, 255, .7) !important;
+  background: transparent !important;
+  box-shadow: none !important;
 }
 html[data-dse-maid] body.dark ._77cefa5 {
-  background: rgba(14, 24, 52, .97) !important;
-  box-shadow: inset 0 0 0 1px rgba(211, 180, 119, .40), 0 18px 50px rgba(0, 0, 0, .48), inset 0 1px 0 rgba(151, 169, 216, .2) !important;
+  background: transparent !important;
+  box-shadow: none !important;
 }
 
 /* 金线九宫格外框 + 蝴蝶结 + 左右丝带（同一层，天然贴合边框） */
@@ -910,8 +911,8 @@ html[data-dse-maid] body [class*="assistant-message-main-content"]:not(#__none__
   border-radius: 16px !important;
   padding: 14px 18px !important;
   box-shadow:
-    inset 0 0 0 1px rgba(197, 164, 104, .50),
-    0 0 0 1px rgba(197, 164, 104, .28),
+    inset 0 0 0 1.5px rgba(197, 164, 104, .58),
+    0 0 0 1px rgba(197, 164, 104, .30),
     inset 0 1px 0 rgba(255, 255, 255, .66),
     0 10px 26px rgba(15, 30, 72, .10) !important;
 }
