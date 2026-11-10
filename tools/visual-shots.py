@@ -106,6 +106,11 @@ def main():
               const b=btns.find(x=>/Accept all|Necessary|同意|接受|Accept/i.test(x.innerText||''));
               if(b)b.click();})()""")
             time.sleep(1.5)
+            # 等 UI 真正渲染出来（模拟器慢）
+            for _ in range(20):
+                if c.eval("!!document.querySelector('.aaff8b8f')") in (True,):
+                    break
+                time.sleep(1.5)
             c.eval("try{if(window.DSENative&&DSENative.setMaidSkin)DSENative.setMaidSkin(true);}catch(e){}")
             c.eval("try{if(window.__dseMaidApply)window.__dseMaidApply(true);}catch(e){}")
             time.sleep(3)
