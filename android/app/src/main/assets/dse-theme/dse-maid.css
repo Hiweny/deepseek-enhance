@@ -93,9 +93,16 @@ html[data-dse-maid] body ._765a5cd {
 #dse-maid-stage {
   position: fixed;
   inset: 0;
-  z-index: -1;
+  z-index: 0;
   pointer-events: none;
   overflow: hidden;
+}
+/* WebView 里负 z-index 层会被根背景吞掉：舞台改 0，主内容层原地提一层（不动 #root） */
+html[data-dse-maid] body .dc04ec1d,
+html[data-dse-maid] body ._7780f2e,
+html[data-dse-maid] body ._2be88ba {
+  position: relative;
+  z-index: 1;
 }
 
 /* 立绘 */
@@ -166,7 +173,10 @@ html[data-dse-maid] body:not(.dse-maid-conv) #dse-maid-stage .maid-landing-bow {
   right: 92px;
   top: 52px;
   height: 18px;
-  background: url("https://appassets.androidplatform.net/assets/dse-theme/img/top-trim.webp") center top / auto 18px repeat-x;
+  background-image: url("https://appassets.androidplatform.net/assets/dse-theme/img/top-trim.webp"), url("https://appassets.androidplatform.net/assets/dse-theme/img/top-trim.webp");
+  background-position: left top, right top;
+  background-size: calc(50% - 60px) 18px, calc(50% - 60px) 18px;
+  background-repeat: repeat-x, repeat-x;
   opacity: .92;
   pointer-events: none;
 }
@@ -424,6 +434,20 @@ html[data-dse-maid] body.dark ._77cefa5 {
 /* 金线九宫格外框 + 蝴蝶结 + 左右丝带（同一层，天然贴合边框） */
 html[data-dse-maid] body .aaff8b8f {
   contain: paint;
+  border-radius: 28px !important;
+  background: linear-gradient(180deg, rgba(255, 254, 250, .90), rgba(244, 247, 253, .78)) !important;
+  backdrop-filter: none !important;
+  box-shadow:
+    inset 0 0 0 1.5px rgba(197, 164, 104, .55),
+    inset 0 1px 0 rgba(255, 255, 255, .82),
+    0 16px 40px rgba(19, 38, 87, .13) !important;
+}
+html[data-dse-maid] body.dark .aaff8b8f {
+  background: linear-gradient(180deg, rgba(27, 44, 84, .80), rgba(10, 23, 58, .74)) !important;
+  box-shadow:
+    inset 0 0 0 1.5px rgba(211, 180, 119, .48),
+    inset 0 1px 0 rgba(190, 206, 245, .18),
+    0 18px 46px rgba(0, 0, 0, .42) !important;
 }
 html[data-dse-maid] body .aaff8b8f::before {
   content: "";

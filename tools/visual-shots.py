@@ -125,6 +125,15 @@ def main():
                 bgLen:(getComputedStyle(document.body,'::before').backgroundImage||'').length,
                 figLen:(document.querySelector('.maid-fig.right')?getComputedStyle(document.querySelector('.maid-fig.right')).backgroundImage.length:0)});})()""")
             print("shot", name, ok, url, "diag:", diag, flush=True)
+            probe = c.eval("""(()=>{const out={};const g=(sel)=>{const e=document.querySelector(sel);if(!e)return 'MISSING';const r=e.getBoundingClientRect();const s=getComputedStyle(e);return {x:Math.round(r.x),y:Math.round(r.y),w:Math.round(r.width),h:Math.round(r.height),z:s.zIndex,pos:s.position,bg:(s.backgroundImage||'').slice(0,70),op:s.opacity};};
+              out.stage=g('#dse-maid-stage');out.left=g('.maid-fig.left');out.right=g('.maid-fig.right');out.trim=g('.maid-top-trim');out.bow=g('.maid-landing-bow');
+              const card=document.querySelector('.aaff8b8f');if(card){const r=card.getBoundingClientRect();const s=getComputedStyle(card);out.card={x:Math.round(r.x),y:Math.round(r.y),w:Math.round(r.width),h:Math.round(r.height),rad:s.borderRadius,sh:(s.boxShadow||'').slice(0,110)};
+                const b=getComputedStyle(card,'::before');out.cardBefore={bt:b.borderTopWidth,bl:b.borderLeftWidth,inset:b.inset};
+                const a=getComputedStyle(card,'::after');out.cardAfter={w:a.width,h:a.height,l:a.left,ml:a.marginLeft};}
+              out.vw=innerWidth;out.vh=innerHeight;out.docH=document.documentElement.scrollHeight;
+              return JSON.stringify(out);})()""")
+            open(os.path.join(OUT, "probe.txt"), "a").write(name + "\t" + str(probe) + "\n")
+            print("PROBE", name, probe, flush=True)
             # 侧栏展开
             try:
                 if c.eval("()=>{const e=document.querySelector('.dc04ec1d');return !e||e.getBoundingClientRect().width<100}") in (True,):
