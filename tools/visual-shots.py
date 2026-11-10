@@ -134,6 +134,11 @@ def main():
               const sc=document.querySelector('.ds-virtual-list');
               if(card&&sc){const y0=Math.round(card.getBoundingClientRect().y);sc.scrollTop+=500;await new Promise(r=>setTimeout(r,450));const y1=Math.round(card.getBoundingClientRect().y);sc.scrollTop-=500;await new Promise(r=>setTimeout(r,250));out.scrollDelta=y1-y0;out.canScroll=sc.scrollHeight-sc.clientHeight;}
               else out.scrollDelta='no-scroller';
+              const cl=e=>e?(String(e.className||e.tagName)).slice(0,60):'none';
+              out.hitLeft=cl(document.elementFromPoint(24, innerHeight-140));
+              out.hitRight=cl(document.elementFromPoint(innerWidth-24, innerHeight-140));
+              out.hitCenter=cl(document.elementFromPoint(innerWidth/2, innerHeight/2));
+              if(card){const chain=[];let e=card;for(let i=0;i<6&&e;i++){const r=e.getBoundingClientRect();const cs=getComputedStyle(e);chain.push({c:cl(e),x:Math.round(r.x),w:Math.round(r.width),pos:cs.position,bg:cs.backgroundColor});e=e.parentElement;}out.chain=chain;}
               out.vw=innerWidth;out.vh=innerHeight;return JSON.stringify(out);})()""")
             open(os.path.join(OUT, "probe.txt"), "a").write(name + "\t" + str(probe) + "\n")
             print("PROBE", name, probe, flush=True)

@@ -51,16 +51,7 @@ html[data-dse-maid] {
 }
 /* 背景挂 body（html 保持透明，负层级的立绘才不会被根背景盖住） */
 html[data-dse-maid] body {
-  background-color: #dce6f5 !important;
-  background-image: url("https://appassets.androidplatform.net/assets/dse-theme/img/palace-light.webp");
-  background-size: cover;
-  background-position: center center;
-  background-repeat: no-repeat;
-  background-attachment: fixed;
-}
-html[data-dse-maid] body.dark {
-  background-color: #080f27 !important;
-  background-image: url("https://appassets.androidplatform.net/assets/dse-theme/img/palace-dark.webp");
+  background: transparent !important;
 }
 
 html[data-dse-maid] body::before {
@@ -93,17 +84,15 @@ html[data-dse-maid] body ._765a5cd {
 #dse-maid-stage {
   position: fixed;
   top: 0; right: 0; bottom: 0; left: 0;
-  z-index: 0;
+  z-index: -1;
   pointer-events: none;
   overflow: hidden;
+  background: url("https://appassets.androidplatform.net/assets/dse-theme/img/palace-light.webp") center center / cover no-repeat;
 }
-/* WebView 里负 z-index 层会被根背景吞掉：舞台改 0，主内容层原地提一层（不动 #root） */
-html[data-dse-maid] body .dc04ec1d,
-html[data-dse-maid] body ._7780f2e,
-html[data-dse-maid] body ._2be88ba {
-  position: relative;
-  z-index: 1;
+html[data-dse-maid] body.dark #dse-maid-stage {
+  background-image: url("https://appassets.androidplatform.net/assets/dse-theme/img/palace-dark.webp");
 }
+
 
 /* 立绘 */
 #dse-maid-stage .maid-fig {
@@ -842,4 +831,45 @@ html[data-dse-maid] body.dark #dse-maid-logo {
     margin-left: -32px;
     background-size: 36px 36px, auto;
   }
+}
+
+/* ---------- v4 细节补全（上游同款金线体系） ---------- */
+html[data-dse-maid] body ::selection {
+  background: rgba(197, 164, 104, .34);
+}
+html[data-dse-maid] body ::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+html[data-dse-maid] body ::-webkit-scrollbar-track {
+  background: transparent;
+}
+html[data-dse-maid] body ::-webkit-scrollbar-thumb {
+  border-radius: 8px;
+  background: linear-gradient(180deg, rgba(197, 164, 104, .55), rgba(197, 164, 104, .26));
+}
+html[data-dse-maid] body ::-webkit-scrollbar-thumb:hover {
+  background: rgba(197, 164, 104, .74);
+}
+/* 表格：与外框同一套金线 */
+html[data-dse-maid] body table th,
+html[data-dse-maid] body table td {
+  border-color: rgba(197, 164, 104, .28) !important;
+}
+html[data-dse-maid] body table th {
+  color: #8a6a36 !important;
+  font-weight: 600;
+}
+html[data-dse-maid] body.dark table th {
+  color: var(--maid-gold-soft) !important;
+}
+/* 引用：左侧金线 + 极浅底 */
+html[data-dse-maid] body blockquote {
+  border-left: 2px solid rgba(197, 164, 104, .55) !important;
+  background: rgba(197, 164, 104, .07) !important;
+  border-radius: 0 10px 10px 0;
+}
+/* 键盘焦点：金环，不改变布局 */
+html[data-dse-maid] body :focus-visible {
+  outline-color: rgba(197, 164, 104, .62) !important;
 }
