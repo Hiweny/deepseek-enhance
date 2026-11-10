@@ -901,3 +901,23 @@ html[data-dse-maid] body ._262baab::before {
 html[data-dse-maid] body:not(.dse-maid-conv) ._1c42ad7 {
   margin-bottom: 26px !important;
 }
+
+/* ---------- v6：AI 气泡强制成卡（最高权重，末位覆盖） ---------- */
+html[data-dse-maid] body [class*="assistant-message-main-content"]:not(#__none__) {
+  background-image: linear-gradient(180deg, rgba(252, 253, 255, .94), rgba(238, 243, 253, .90)) !important;
+  background-color: transparent !important;
+  border: 0 !important;
+  border-radius: 16px !important;
+  padding: 14px 18px !important;
+  box-shadow:
+    inset 0 0 0 1px rgba(197, 164, 104, .42),
+    inset 0 1px 0 rgba(255, 255, 255, .66),
+    0 10px 26px rgba(15, 30, 72, .10) !important;
+}
+html[data-dse-maid] body.dark [class*="assistant-message-main-content"]:not(#__none__) {
+  background-image: linear-gradient(180deg, rgba(25, 42, 83, .94), rgba(12, 25, 60, .92)) !important;
+  box-shadow:
+    inset 0 0 0 1px rgba(211, 180, 119, .38),
+    inset 0 1px 0 rgba(190, 206, 245, .16),
+    0 10px 28px rgba(0, 0, 0, .34) !important;
+}
