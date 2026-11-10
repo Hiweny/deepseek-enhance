@@ -47,22 +47,20 @@ html[data-dse-maid] body.dark {
 
 /* ---------------- 背景 ---------------- */
 html[data-dse-maid] {
-  background: #dce6f5 !important;
+  background-color: #dce6f5 !important;
+  background-image: url("https://appassets.androidplatform.net/assets/dse-theme/img/palace-light.webp");
+  background-size: cover;
+  background-position: center center;
+  background-repeat: no-repeat;
+  background-attachment: fixed;
 }
 html[data-dse-maid]:has(body.dark) {
-  background: #080f27 !important;
+  background-color: #080f27 !important;
+  background-image: url("https://appassets.androidplatform.net/assets/dse-theme/img/palace-dark.webp");
 }
 
 html[data-dse-maid] body::before {
-  content: "";
-  position: fixed;
-  inset: 0;
-  z-index: -3;
-  background: url("https://appassets.androidplatform.net/assets/dse-theme/img/palace-light.webp") center / cover no-repeat !important;
-  pointer-events: none;
-}
-html[data-dse-maid] body.dark::before {
-  background-image: url("https://appassets.androidplatform.net/assets/dse-theme/img/palace-dark.webp") !important;
+  display: none;
 }
 html[data-dse-maid] body::after {
   content: "";
@@ -88,10 +86,14 @@ html[data-dse-maid] body ._765a5cd {
 }
 
 /* ---------------- 皮肤装饰层（不动原布局） ---------------- */
+html[data-dse-maid] body #root {
+  position: relative;
+  z-index: 2;
+}
 #dse-maid-stage {
   position: fixed;
   inset: 0;
-  z-index: -1;
+  z-index: 1;
   pointer-events: none;
   overflow: hidden;
 }
