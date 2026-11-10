@@ -140,6 +140,8 @@ def main():
               out.hitCenter=cl(document.elementFromPoint(innerWidth/2, innerHeight/2));
               if(card){const chain=[];let e=card;for(let i=0;i<6&&e;i++){const r=e.getBoundingClientRect();const cs=getComputedStyle(e);chain.push({c:cl(e),x:Math.round(r.x),w:Math.round(r.width),pos:cs.position,bg:cs.backgroundColor});e=e.parentElement;}out.chain=chain;}
               const bub=(sel)=>{const e=document.querySelector(sel);if(!e)return 'MISSING';const c=getComputedStyle(e);return {bg:c.backgroundColor,bgi:(c.backgroundImage||'').slice(0,46),sh:(c.boxShadow||'').slice(0,80)};};
+              const tb=document.querySelector('._2be88ba');
+              out.topBtns=tb?[...tb.querySelectorAll('button')].slice(0,4).map(b=>{const r=b.getBoundingClientRect();return [Math.round(r.x),Math.round(r.y),Math.round(r.width),Math.round(r.height)]}):'MISSING';
               out.ai=bub('.ds-assistant-message-main-content');out.user=bub('.fbb737a4');out.mark=bub('.ds-markdown');
               out.vw=innerWidth;out.vh=innerHeight;return JSON.stringify(out);})()""")
             open(os.path.join(OUT, "probe.txt"), "a").write(name + "\t" + str(probe) + "\n")
