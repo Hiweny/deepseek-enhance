@@ -139,6 +139,8 @@ def main():
               out.hitRight=cl(document.elementFromPoint(innerWidth-24, innerHeight-140));
               out.hitCenter=cl(document.elementFromPoint(innerWidth/2, innerHeight/2));
               if(card){const chain=[];let e=card;for(let i=0;i<6&&e;i++){const r=e.getBoundingClientRect();const cs=getComputedStyle(e);chain.push({c:cl(e),x:Math.round(r.x),w:Math.round(r.width),pos:cs.position,bg:cs.backgroundColor});e=e.parentElement;}out.chain=chain;}
+              const bub=(sel)=>{const e=document.querySelector(sel);if(!e)return 'MISSING';const c=getComputedStyle(e);return {bg:c.backgroundColor,bgi:(c.backgroundImage||'').slice(0,46),sh:(c.boxShadow||'').slice(0,80)};};
+              out.ai=bub('.ds-assistant-message-main-content');out.user=bub('.fbb737a4');out.mark=bub('.ds-markdown');
               out.vw=innerWidth;out.vh=innerHeight;return JSON.stringify(out);})()""")
             open(os.path.join(OUT, "probe.txt"), "a").write(name + "\t" + str(probe) + "\n")
             print("PROBE", name, probe, flush=True)

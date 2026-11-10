@@ -20,8 +20,8 @@ android {
         applicationId "com.deepsleep.app"
         minSdk 24
         targetSdk 34
-        versionCode 31
-        versionName "8.6.14"
+        versionCode 32
+        versionName "8.6.15"
     }
 
     signingConfigs {

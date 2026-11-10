@@ -873,3 +873,25 @@ html[data-dse-maid] body blockquote {
 html[data-dse-maid] body :focus-visible {
   outline-color: rgba(197, 164, 104, .62) !important;
 }
+
+/* ---------- v5：侧栏徽章 + 首页间距 ---------- */
+/* 侧栏顶部 logo 区：垫一枚盾形纹章（上游 workspace-shield） */
+html[data-dse-maid] body ._262baab {
+  position: relative;
+}
+html[data-dse-maid] body ._262baab::before {
+  content: "";
+  position: absolute;
+  left: 14px;
+  top: 50%;
+  width: 30px;
+  height: 34px;
+  margin-top: -17px;
+  background: url("https://appassets.androidplatform.net/assets/dse-theme/img/workspace-shield.webp") center / contain no-repeat;
+  opacity: .9;
+  pointer-events: none;
+}
+/* 首页欢迎语与输入卡之间给足呼吸感 */
+html[data-dse-maid] body:not(.dse-maid-conv) ._1c42ad7 {
+  margin-bottom: 26px !important;
+}
