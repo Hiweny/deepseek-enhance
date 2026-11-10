@@ -2,7 +2,7 @@
  * 深海女仆工坊（maid-atelier）for DeepSeek Web / DeepSleep APK
  * 素材与装饰体系移植自 Small-tailqwq/dsh-deep-whale 的 maid-atelier，
  * 选择器与装饰层按 chat.deepseek.com 真实 DOM 重写。
- * 图片路径占位 __BASE__ 由构建脚本替换（APK: data URI / Web: 远程）。
+ * 图片路径占位 https://appassets.androidplatform.net/assets/dse-theme/img/ 由构建脚本替换（APK: data URI / Web: 远程）。
  * ============================================================ */
 
 html[data-dse-maid] body {
@@ -52,7 +52,7 @@ html[data-dse-maid] {
 /* 背景挂 body（html 保持透明，负层级的立绘才不会被根背景盖住） */
 html[data-dse-maid] body {
   background-color: #dce6f5 !important;
-  background-image: url("__BASE__palace-light.webp");
+  background-image: url("https://appassets.androidplatform.net/assets/dse-theme/img/palace-light.webp");
   background-size: cover;
   background-position: center center;
   background-repeat: no-repeat;
@@ -60,7 +60,7 @@ html[data-dse-maid] body {
 }
 html[data-dse-maid] body.dark {
   background-color: #080f27 !important;
-  background-image: url("__BASE__palace-dark.webp");
+  background-image: url("https://appassets.androidplatform.net/assets/dse-theme/img/palace-dark.webp");
 }
 
 html[data-dse-maid] body::before {
@@ -117,11 +117,11 @@ html[data-dse-maid] body ._765a5cd {
 }
 #dse-maid-stage .maid-fig.left {
   left: 96px;
-  background-image: url("__BASE__maid-left.webp");
+  background-image: url("https://appassets.androidplatform.net/assets/dse-theme/img/maid-left.webp");
 }
 #dse-maid-stage .maid-fig.right {
   right: 96px;
-  background-image: url("__BASE__maid-right.webp");
+  background-image: url("https://appassets.androidplatform.net/assets/dse-theme/img/maid-right.webp");
 }
 /* 进入对话：两边的立绘收拢贴边并缩小（对应上游 conversation-active） */
 html[data-dse-maid] body.dse-maid-conv #dse-maid-stage .maid-fig {
@@ -145,14 +145,30 @@ html[data-dse-maid] body.dark #dse-maid-stage .maid-fig {
 }
 
 /* 顶部金边蕾丝横条 */
+#dse-maid-stage .maid-landing-bow {
+  display: none;
+  position: absolute;
+  left: 50%;
+  top: 54px;
+  width: 92px;
+  height: 48px;
+  margin-left: -46px;
+  background: url("https://appassets.androidplatform.net/assets/dse-theme/img/bow.webp") center top / contain no-repeat;
+  opacity: .96;
+  filter: drop-shadow(0 3px 8px rgba(4, 11, 35, .3));
+}
+
+html[data-dse-maid] body:not(.dse-maid-conv) #dse-maid-stage .maid-landing-bow { display: block; }
+
 #dse-maid-stage .maid-top-trim {
   position: absolute;
-  left: 0;
-  right: 0;
-  top: 46px;
+  left: 92px;
+  right: 92px;
+  top: 52px;
   height: 18px;
-  background: url("__BASE__top-trim.webp") left top / auto 18px repeat-x;
-  opacity: .85;
+  background: url("https://appassets.androidplatform.net/assets/dse-theme/img/top-trim.webp") center top / auto 18px repeat-x;
+  opacity: .92;
+  pointer-events: none;
 }
 
 /* 底部花边条 + 中央纹章 */
@@ -163,7 +179,7 @@ html[data-dse-maid] body.dark #dse-maid-stage .maid-fig {
   position: absolute;
   inset: auto 0 0 0;
   height: 34px;
-  background: url("__BASE__bottom-trim.webp") left bottom / auto 26px repeat-x;
+  background: url("https://appassets.androidplatform.net/assets/dse-theme/img/bottom-trim.webp") left bottom / auto 26px repeat-x;
   opacity: .9;
 }
 #dse-maid-stage .maid-bottom-band::after {
@@ -174,7 +190,7 @@ html[data-dse-maid] body.dark #dse-maid-stage .maid-fig {
   width: 96px;
   height: 50px;
   transform: translateX(-50%);
-  background: url("__BASE__bottom-crest.webp") center bottom / contain no-repeat;
+  background: url("https://appassets.androidplatform.net/assets/dse-theme/img/bottom-crest.webp") center bottom / contain no-repeat;
   filter: drop-shadow(0 3px 8px rgba(4, 11, 35, .3));
 }
 
@@ -185,7 +201,7 @@ html[data-dse-maid] body.dark #dse-maid-stage .maid-fig {
   bottom: 66px;
   width: 76px;
   height: 76px;
-  background: url("__BASE__chibi.webp") center bottom / contain no-repeat;
+  background: url("https://appassets.androidplatform.net/assets/dse-theme/img/chibi.webp") center bottom / contain no-repeat;
   opacity: .95;
   filter: drop-shadow(0 4px 10px rgba(15, 30, 72, .25));
 }
@@ -208,7 +224,7 @@ html[data-dse-maid] body .b8812f16::after {
   right: 0;
   width: 130px;
   height: 130px;
-  background: url("__BASE__sidebar-corner.webp") top right / 130px 130px no-repeat;
+  background: url("https://appassets.androidplatform.net/assets/dse-theme/img/sidebar-corner.webp") top right / 130px 130px no-repeat;
   opacity: .40;
   pointer-events: none;
 }
@@ -232,7 +248,7 @@ html[data-dse-maid] body.dark .e066abb8 {
 /* 开启新对话：瓷盘花纹 */
 html[data-dse-maid] body ._5a8ac7a,
 html[data-dse-maid] body .a084f19e {
-  background: url("__BASE__new-session.webp") center / 100% 100% no-repeat !important;
+  background: url("https://appassets.androidplatform.net/assets/dse-theme/img/new-session.webp") center / 100% 100% no-repeat !important;
   border: 0 !important;
   box-shadow: 0 6px 16px rgba(15, 30, 72, .12) !important;
   color: var(--maid-navy-900) !important;
@@ -305,14 +321,21 @@ html[data-dse-maid] body .ds-assistant-message-main-content {
   background: var(--maid-bubble-ai) !important;
   -webkit-backdrop-filter: blur(16px) saturate(150%);
   backdrop-filter: blur(16px) saturate(150%);
-  border: 1px solid var(--maid-line) !important;
+  border: 0 !important;
   border-radius: 16px !important;
   padding: 14px 18px !important;
-  box-shadow: 0 10px 28px rgba(15, 30, 72, .10), inset 0 1px 0 rgba(255, 255, 255, .5) !important;
+  box-shadow:
+    inset 0 0 0 1px rgba(197, 164, 104, .40),
+    inset 0 1px 0 rgba(255, 255, 255, .62),
+    inset 0 -1px 0 rgba(82, 106, 168, .16),
+    0 10px 28px rgba(15, 30, 72, .10) !important;
 }
 html[data-dse-maid] body.dark .ds-assistant-message-main-content {
-  box-shadow: 0 10px 30px rgba(0, 0, 0, .34), inset 0 1px 0 rgba(151, 169, 216, .12) !important;
-  border-color: rgba(151, 169, 216, .22) !important;
+  box-shadow:
+    inset 0 0 0 1px rgba(211, 180, 119, .34),
+    inset 0 1px 0 rgba(190, 206, 245, .18),
+    inset 0 -1px 0 rgba(0, 0, 0, .3),
+    0 10px 30px rgba(0, 0, 0, .34) !important;
 }
 
 /* 用户气泡 */
@@ -320,8 +343,11 @@ html[data-dse-maid] body .fbb737a4 {
   background: var(--maid-bubble-user) !important;
   -webkit-backdrop-filter: blur(16px) saturate(160%);
   backdrop-filter: blur(16px) saturate(160%);
-  border: 1px solid var(--maid-line) !important;
-  box-shadow: 0 8px 22px rgba(15, 30, 72, .12) !important;
+  border: 0 !important;
+  box-shadow:
+    inset 0 0 0 1px rgba(197, 164, 104, .40),
+    inset 0 1px 0 rgba(255, 255, 255, .7),
+    0 8px 22px rgba(15, 30, 72, .12) !important;
   color: var(--maid-ink) !important;
 }
 html[data-dse-maid] body.dark .fbb737a4 {
@@ -396,22 +422,25 @@ html[data-dse-maid] body.dark ._77cefa5 {
 }
 
 /* 金线九宫格外框 + 蝴蝶结 + 左右丝带（同一层，天然贴合边框） */
+html[data-dse-maid] body .aaff8b8f {
+  contain: paint;
+}
 html[data-dse-maid] body .aaff8b8f::before {
   content: "";
   position: absolute;
   box-sizing: border-box;
-  inset: -10px -7px -8px;
+  inset: -9px;
   border-style: solid;
-  border-width: 30px 24px 24px;
-  border-image-source: url("__BASE__composer-frame-shell.webp");
+  border-width: 30px 24px 28px;
+  border-image-source: url("https://appassets.androidplatform.net/assets/dse-theme/img/composer-frame-shell.webp");
   border-image-slice: 170 120 115 120;
-  border-image-width: 30px 24px 24px 24px;
+  border-image-width: 30px 24px 28px 24px;
   border-image-repeat: round;
   background-image:
-    url("__BASE__ribbon-left-cap.webp"),
-    url("__BASE__ribbon-right-cap.webp"),
-    url("__BASE__ribbon-left-fill.webp"),
-    url("__BASE__ribbon-right-fill.webp");
+    url("https://appassets.androidplatform.net/assets/dse-theme/img/ribbon-left-cap.webp"),
+    url("https://appassets.androidplatform.net/assets/dse-theme/img/ribbon-right-cap.webp"),
+    url("https://appassets.androidplatform.net/assets/dse-theme/img/ribbon-left-fill.webp"),
+    url("https://appassets.androidplatform.net/assets/dse-theme/img/ribbon-right-fill.webp");
   background-position:
     left 44px top,
     right 44px top,
@@ -436,12 +465,12 @@ html[data-dse-maid] body .aaff8b8f::after {
   position: absolute;
   left: 50%;
   top: -18px;
-  width: 150px;
-  height: 64px;
-  margin-left: -90px;
+  width: 152px;
+  height: 65px;
+  margin-left: -76px;
   pointer-events: none;
   z-index: 4;
-  background: url("__BASE__bow.webp") center top / contain no-repeat;
+  background: url("https://appassets.androidplatform.net/assets/dse-theme/img/bow.webp") center top / contain no-repeat;
   filter: drop-shadow(0 4px 10px rgba(4, 11, 35, .32));
 }
 
@@ -505,7 +534,7 @@ html[data-dse-maid] body .ds-modal-content__header-wrapper::after {
   right: 0;
   top: 0;
   height: 20px;
-  background: url("__BASE__settings-frame.webp") center top / 100% auto no-repeat;
+  background: url("https://appassets.androidplatform.net/assets/dse-theme/img/settings-frame.webp") center top / 100% auto no-repeat;
   opacity: .62;
   pointer-events: none;
 }
@@ -630,28 +659,20 @@ html[data-dse-maid] body #dse-bg-mask {
     height: 100px;
     background-size: 100px 100px;
   }
-  html[data-dse-maid] body .aaff8b8f::before {
-    inset: -8px -6px -7px;
-    border-width: 24px 20px 20px;
-    border-image-width: 24px 20px 20px 20px;
+  html[data-dse-maid] body .aaff8b8f {
+  contain: paint;
+}
+html[data-dse-maid] body .aaff8b8f::before {
+    inset: -8px;
+    border-width: 26px 20px 24px;
+    border-image-width: 26px 20px 24px 20px;
   }
   html[data-dse-maid] body .aaff8b8f::after {
-    top: -14px;
-    width: 112px;
-    height: 48px;
-    margin-left: -67px;
-    background-size:
-      auto 46px,
-      68px 21px,
-      68px 21px,
-      max(0px, calc(50% - 118px)) 21px,
-      max(0px, calc(50% - 118px)) 21px;
-    background-position:
-      center top,
-      left 30px top,
-      right 30px top,
-      left 98px top,
-      right 98px top;
+    top: -15px;
+    width: 118px;
+    height: 50px;
+    margin-left: -59px;
+    background: url("https://appassets.androidplatform.net/assets/dse-theme/img/bow.webp") center top / contain no-repeat;
   }
 }
 
@@ -672,7 +693,7 @@ html[data-dse-maid] body ._1c42ad7::before {
   width: 76px;
   height: 44px;
   margin: 0 auto 14px;
-  background: url("__BASE__bow.webp") center / contain no-repeat;
+  background: url("https://appassets.androidplatform.net/assets/dse-theme/img/bow.webp") center / contain no-repeat;
   opacity: .95;
   filter: drop-shadow(0 3px 8px rgba(4, 11, 35, .22));
 }
@@ -680,6 +701,9 @@ html[data-dse-maid] body ._1c42ad7::before {
 
 /* ---------- v4 修订 ---------- */
 /* 金框金属高光 */
+html[data-dse-maid] body .aaff8b8f {
+  contain: paint;
+}
 html[data-dse-maid] body .aaff8b8f::before {
   box-shadow: inset 0 0 0 1px rgba(255, 236, 196, .50);
 }
