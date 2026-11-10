@@ -116,7 +116,9 @@ def main():
               let rules=0; try{for(const s of document.styleSheets){if(s.href&&s.href.indexOf('dse-maid')>=0)rules=s.cssRules.length;}}catch(e){}
               return JSON.stringify({link:!!l, href:l?l.href:'', stage:!!document.getElementById('dse-maid-stage'),
                 bodyCls:document.body.className, attr:document.documentElement.getAttribute('data-dse-maid'),
-                rules:rules, apply:typeof window.__dseMaidApply, skin:typeof window.DSENative!=='undefined'?DSENative.maidSkin():null});})()""")
+                rules:rules, apply:typeof window.__dseMaidApply, skin:typeof window.DSENative!=='undefined'?DSENative.maidSkin():null,
+                bgLen:(getComputedStyle(document.body,'::before').backgroundImage||'').length,
+                figLen:(document.querySelector('.maid-fig.right')?getComputedStyle(document.querySelector('.maid-fig.right')).backgroundImage.length:0)});})()""")
             print("shot", name, ok, url, "diag:", diag, flush=True)
             # 侧栏展开
             try:
