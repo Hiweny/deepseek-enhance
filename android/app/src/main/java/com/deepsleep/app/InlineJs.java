@@ -167,7 +167,7 @@ final class InlineJs {
                 + "for(var j=0;j<els.length;j++){var t=(els[j].textContent||'').trim();"
                 + "if(t.length>4&&t.length<40&&els[j].children.length===0&&/想从哪里开始|我能帮什么忙|帮什么忙|有什么可以帮|你好，|随时开始|有什么计划|早上好|下午好|晚上好|欢迎回来|今天/.test(t))return els[j];}"
                 + "return null;}"
-                + "function mkLogo(){if(document.getElementById('dse-maid-logo'))return;"
+                + "function mkLogo(){return;"
                 + "var h=findHero();if(!h)return;"
                 + "var d=document.createElement('div');d.id='dse-maid-logo';var st2=document.getElementById('dse-maid-stage');if(st2){st2.appendChild(d);return;}var host=h;"
                 + "for(var k=0;k<4&&host.parentElement&&host.getBoundingClientRect().width<10;k++){host=host.parentElement;}"

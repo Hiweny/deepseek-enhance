@@ -144,19 +144,18 @@ html[data-dse-maid] body.dark #dse-maid-stage .maid-fig {
 
 /* 顶部金边蕾丝横条 */
 #dse-maid-stage .maid-top-trim {
-  display: none;
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 46px;
+  height: 18px;
+  background: url("__BASE__top-trim.webp") left top / auto 18px repeat-x;
+  opacity: .85;
 }
 
 /* 底部花边条 + 中央纹章 */
 #dse-maid-stage .maid-bottom-blur {
-  position: absolute;
-  inset: auto 0 0 0;
-  height: 120px;
-  background: linear-gradient(180deg, rgba(9, 19, 51, 0) 0%, rgba(9, 19, 51, .16) 45%, rgba(9, 19, 51, .40) 100%);
-  pointer-events: none;
-}
-html[data-dse-maid] body:not(.dark) #dse-maid-stage .maid-bottom-blur {
-  background: linear-gradient(180deg, rgba(255, 255, 255, 0) 0%, rgba(228, 237, 251, .40) 45%, rgba(203, 220, 243, .78) 100%);
+  display: none;
 }
 #dse-maid-stage .maid-bottom-band {
   position: absolute;
@@ -218,18 +217,7 @@ html[data-dse-maid] body.dark .b8812f16::after {
 
 /* 底部 U 型蕾丝 + 蝴蝶结 */
 html[data-dse-maid] body .b8812f16::before {
-  content: "";
-  position: absolute;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  height: 62px;
-  background: url("__BASE__sidebar-swag.webp") center bottom / 100% auto no-repeat;
-  opacity: .5;
-  pointer-events: none;
-}
-html[data-dse-maid] body.dark .b8812f16::before {
-  opacity: .38;
+  display: none;
 }
 
 html[data-dse-maid] body .e066abb8 {
@@ -397,14 +385,12 @@ html[data-dse-maid] body .d72636e2 {
   background-color: transparent !important;
 }
 html[data-dse-maid] body ._77cefa5 {
-  background: var(--maid-glass) !important;
-  -webkit-backdrop-filter: blur(20px) saturate(170%);
-  backdrop-filter: blur(20px) saturate(170%);
+  background: rgba(250, 252, 255, .97) !important;
   border: 1px solid rgba(197, 164, 104, .34) !important;
   box-shadow: 0 14px 40px rgba(15, 30, 72, .18), inset 0 1px 0 rgba(255, 255, 255, .7) !important;
 }
 html[data-dse-maid] body.dark ._77cefa5 {
-  background: rgba(9, 18, 44, .93) !important;
+  background: rgba(14, 24, 52, .97) !important;
   border-color: rgba(211, 180, 119, .40) !important;
   box-shadow: 0 18px 50px rgba(0, 0, 0, .48), inset 0 1px 0 rgba(151, 169, 216, .2) !important;
 }
@@ -457,24 +443,6 @@ html[data-dse-maid] body .aaff8b8f::after {
   z-index: 0;
   background: url("__BASE__bow.webp") center top / contain no-repeat;
   filter: drop-shadow(0 4px 10px rgba(4, 11, 35, .32));
-}
-
-/* 输入框下方的模糊渐变（用输入区容器承接，不遮内容） */
-html[data-dse-maid] body ._871cbca::after {
-  content: "";
-  position: absolute;
-  left: 0;
-  right: 0;
-  bottom: -26px;
-  height: 28px;
-  pointer-events: none;
-  z-index: -1;
-  background: linear-gradient(180deg, rgba(9, 19, 51, 0) 0%, rgba(9, 19, 51, .22) 60%, rgba(9, 19, 51, .40) 100%);
-  -webkit-backdrop-filter: blur(10px);
-  backdrop-filter: blur(10px);
-}
-html[data-dse-maid] body:not(.dark) ._871cbca::after {
-  background: linear-gradient(180deg, rgba(255, 255, 255, 0) 0%, rgba(230, 238, 251, .55) 60%, rgba(206, 222, 244, .88) 100%);
 }
 
 /* 输入框下方工具条 */
@@ -643,14 +611,7 @@ html[data-dse-maid] body #dse-bg-mask {
     display: none;
   }
   #dse-maid-stage .maid-bottom-blur {
-  position: absolute;
-  inset: auto 0 0 0;
-  height: 120px;
-  background: linear-gradient(180deg, rgba(9, 19, 51, 0) 0%, rgba(9, 19, 51, .16) 45%, rgba(9, 19, 51, .40) 100%);
-  pointer-events: none;
-}
-html[data-dse-maid] body:not(.dark) #dse-maid-stage .maid-bottom-blur {
-  background: linear-gradient(180deg, rgba(255, 255, 255, 0) 0%, rgba(228, 237, 251, .40) 45%, rgba(203, 220, 243, .78) 100%);
+  display: none;
 }
 #dse-maid-stage .maid-bottom-band {
     height: 26px;
@@ -752,6 +713,7 @@ html[data-dse-maid] body.dark #dse-maid-stage .maid-fig::after {
 
 /* ---------- v7：首页鲸鱼金环 + 立绘动画 + 手机双立绘 ---------- */
 #dse-maid-logo {
+  display: none !important;
   position: absolute;
   left: 50%;
   top: 26vh;
