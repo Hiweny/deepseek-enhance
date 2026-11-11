@@ -8,7 +8,6 @@ on:
       - 'build.js'
       - 'android/**'
       - '.github/workflows/android.yml'
-      - 'tools/**'
   workflow_dispatch:
 
 permissions:
