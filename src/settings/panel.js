@@ -146,15 +146,32 @@ var Panel = {
         if (path === 'zoom') DSE.modules.zoom && DSE.modules.zoom.apply(Number(inp.value));
       });
     });
+    /* 长文本（系统提示词等）落库走 debounce：粘贴上万字时不再每 keystroke 全量 JSON 序列化，
+       否则 localStorage 同步写 + 会话整表读写会把主线程堵死。 */
     el.querySelectorAll('[data-session]').forEach(function (ta) {
-      ta.addEventListener('input', function () {
+      var t = null;
+      function commit() {
+        t = null;
         var sid = Utils.currentSid(), key = ta.getAttribute('data-session'), patch = {};
         patch[key] = ta.value;
         if (sid) DSE.config.setSession(sid, patch);
-      });
+      }
+      function schedule() {
+        if (t) clearTimeout(t);
+        t = setTimeout(commit, ta.value.length > 20000 ? 900 : 400);
+      }
+      ta.addEventListener('input', schedule);
+      ta.addEventListener('paste', schedule);
+      ta.addEventListener('blur', function () { if (t) { clearTimeout(t); commit(); } });
     });
     el.querySelectorAll('[data-tpl]').forEach(function (ta) {
-      ta.addEventListener('input', function () { DSE.modules.prompt.setTpl(ta.getAttribute('data-tpl'), ta.value); });
+      var t = null;
+      function commit() { t = null; DSE.modules.prompt.setTpl(ta.getAttribute('data-tpl'), ta.value); }
+      ta.addEventListener('input', function () {
+        if (t) clearTimeout(t);
+        t = setTimeout(commit, ta.value.length > 20000 ? 900 : 400);
+      });
+      ta.addEventListener('blur', function () { if (t) { clearTimeout(t); commit(); } });
     });
     el.querySelector('[data-role="bgFile"]').addEventListener('change', function (e) {
       var f = e.target.files && e.target.files[0];

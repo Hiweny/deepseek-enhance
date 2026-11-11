@@ -9,7 +9,18 @@ var HAS_GM = typeof GM_getValue === 'function' && typeof GM_setValue === 'functi
 var LS_PREFIX = 'dse_store_';
 var lsStore = {};
 try { lsStore = JSON.parse(localStorage.getItem('dse_bridge_store') || '{}') || {}; } catch (e) { lsStore = {}; }
-function lsFlush() { try { localStorage.setItem('dse_bridge_store', JSON.stringify(lsStore)); } catch (e) {} }
+var lsTimer = null;
+function lsWriteNow() { try { localStorage.setItem('dse_bridge_store', JSON.stringify(lsStore)); } catch (e) {} }
+/* 合并写入：粘贴长文本时 input 会连续触发，逐次全量 stringify+写盘会卡死主线程 */
+function lsFlush() {
+  if (lsTimer) return;
+  lsTimer = setTimeout(function () { lsTimer = null; lsWriteNow(); }, 150);
+}
+function lsFlushNow() { if (lsTimer) { clearTimeout(lsTimer); lsTimer = null; } lsWriteNow(); }
+try {
+  window.addEventListener('pagehide', lsFlushNow);
+  document.addEventListener('visibilitychange', function () { if (document.visibilityState === 'hidden') lsFlushNow(); });
+} catch (e) {}
 
 var Bridge = {
   get: function (k, d) {

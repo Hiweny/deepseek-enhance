@@ -73,6 +73,12 @@ final class InlineJs {
                 + "document.addEventListener('input',function(e){var t=e.target;"
                 + "if(t&&t.tagName==='TEXTAREA'&&!(t.closest&&t.closest('#dse-panel')))arm();},true);"
                 + "})();"
+                // APK 专属：给页面里的文件输入框补上 multiple，原生多选才能真正生效
+                + "(function(){if(window.__DSE_FILEMULTI__)return;window.__DSE_FILEMULTI__=true;"
+                + "function fix(){var f=document.querySelectorAll('input[type=file]');"
+                + "for(var i=0;i<f.length;i++){if(!f[i].multiple)f[i].multiple=true;}}"
+                + "fix();setInterval(fix,1200);"
+                + "document.addEventListener('click',function(){setTimeout(fix,60);},true);})();"
                 // APK 专属：把「当前所在对话」上报给原生（启动恢复用）。SPA 切换走 history，靠 1s 轮询 + 隐藏兜底
                 + "(function(){if(window.__DSE_SESSION_SYNC__)return;window.__DSE_SESSION_SYNC__=true;var last=null;"
                 + "function cur(){try{var m=location.pathname.match(/\\/a\\/chat\\/s\\/([\\w-]+)/);return m?m[1]:'';}catch(e){return '';}}"
