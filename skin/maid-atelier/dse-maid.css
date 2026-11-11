@@ -435,8 +435,6 @@ html[data-dse-maid] body .aaff8b8f {
   border-radius: 26px !important;
   padding-top: 10px !important;
   background: linear-gradient(180deg, rgba(255, 254, 250, .84), rgba(244, 247, 253, .74)) !important;
-  -webkit-backdrop-filter: blur(14px) saturate(1.06);
-  backdrop-filter: blur(14px) saturate(1.06);
   box-shadow:
     inset 0 0 0 1px rgba(197, 164, 104, .42),
     inset 0 1px 0 rgba(255, 255, 255, .8),
@@ -916,21 +914,7 @@ html[data-dse-maid] body.dse-maid-conv #dse-maid-stage .maid-bottom-band::after 
 }
 
 /* ---------- v7：侧栏挂帘（swag）+ 蝴蝶结随上边框上移 ---------- */
-html[data-dse-maid] body .dc04ec1d {
-  position: relative;
-}
-html[data-dse-maid] body .dc04ec1d::after {
-  content: "";
-  position: absolute;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  height: 56px;
-  background: url("https://appassets.androidplatform.net/assets/dse-theme/img/sidebar-swag.webp") center bottom / 100% auto no-repeat;
-  opacity: .88;
-  pointer-events: none;
-  z-index: 2;
-}
+
 html[data-dse-maid] body .aaff8b8f::after {
   will-change: transform;
 }
