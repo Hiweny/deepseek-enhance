@@ -17,7 +17,7 @@ const ORDER = [
   ['modules/background.js'], ['modules/antirecall.js'], ['modules/prompt.js'],
   ['modules/think.js'], ['modules/bubbles.js'], ['modules/latex.js'], ['modules/tweaks.js'],
   ['modules/context.js'], ['modules/nav.js'], ['modules/zoom.js'],
-  ['modules/fold.js'],
+  ['modules/fold.js'], ['modules/kbfix.js'],
   ['modules/buttons.js'],
   ['settings/panel.js'],
   ['main.js'], ['footer.js']

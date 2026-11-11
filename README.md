@@ -2,7 +2,7 @@
 
 面向 [chat.deepseek.com](https://chat.deepseek.com/) 的油猴增强脚本：界面美化、水玻璃气泡、防撤回、按会话隔离的系统提示词、思考自动折叠、上下文用量等。手机浏览器（Kiwi / Edge / Safari 油猴扩展）与桌面端均适配，明暗双色自适应。
 
-Android 套壳（DeepSleep）另有独家皮肤：**深海女仆工坊**（深海蓝蕾丝 + 宫殿场景 + 双鲸鱼娘女仆立绘，亮/暗两套自动跟随系统）。
+Android 套壳（DeepSleep）复用同一套增强脚本，并额外解决 WebView 场景下的文件选择（多选 / 相机）与后台恢复问题。
 
 ## 安装
 
@@ -25,7 +25,6 @@ Android 套壳（DeepSleep）另有独家皮肤：**深海女仆工坊**（深�
 - **LaTeX 公式渲染**：官网默认不渲染 `\( \)`、`\[ \]`、`$...$`，脚本内置**离线 KaTeX**（字体全部内联，无外部请求），流式输出结束即渲染，行间公式可横向滚动，解析失败不炸排版。
 - 可隐藏“内容由 AI 生成”标识。
 - 仅移除移动端欢迎页的“下载应用”按钮，**保留**新建对话、展开侧栏按钮。
-- **深海女仆工坊主题（APK 独家）**：设置面板「外观 → 主题」里切换「默认 / 深海女仆工坊」。开启后整站换肤，装饰全部按上游逐件移植：宫殿背景（白天/夜晚两套）、鲸鱼娘女仆立绘、顶部金边蕾丝横条、底部长条+中央纹章、侧栏右上纹章与底部 U 型蕾丝蝴蝶结、Q 版侧栏角色、新对话瓷盘花纹、输入框金线九宫格外框（border-image 170/120/115/120）+ 上方蝴蝶结 + 左右丝带端帽飘带 + 蕾丝平铺条、官方设置弹窗蕾丝头饰、本插件设置面板；素材用上游 runtime 原图不压缩（约 3.1 MB），自动跟随系统深浅色，可随时一键切回默认。
 
 ### 对话
 - **思考自动折叠**：独立开关，默认开启，自动收起“深度思考”过程；折叠头与展开内容统一为磨砂卡片，用户手动展开后不再自动收起。折叠采用**纯 CSS 隐藏**（不再点击站点折叠头）——长对话向上滚动、虚拟列表重挂载消息时不会再因消息高度突变而“来回跳 / 一下冲到最开头”。
@@ -36,6 +35,8 @@ Android 套壳（DeepSleep）另有独家皮肤：**深海女仆工坊**（深�
 
 ### 系统提示词（按会话隔离，独立开关）
 - 每个会话拥有独立的系统提示词，切换会话互不影响、互不可见。
+- **新对话页可先填后发**：在还没发过消息的新对话里填写系统提示词，发出的**第一条消息就会带上它**，并自动落到这个新会话名下；只填不发则不会保存（避免污染其它会话）。
+- 长文本粘贴不再卡顿：输入落库改为 debounce（≤2 万字 400ms，更长 900ms），整包写盘 150ms 合并，切后台/离开页面立即落盘。
 - 注入只改写网络请求的 `prompt` 字段并用 `⟦DSE⟧` 标记包裹；历史接口回读时自动剥离，刷新、重新生成都不会让系统提示词出现在用户气泡里。
 - 设置面板「提示词」页可编辑当前会话提示词、预览实际注入内容、编辑防撤回简短回应模板，全程透明。
 
@@ -47,6 +48,7 @@ Android 套壳（DeepSleep）另有独家皮肤：**深海女仆工坊**（深�
 - 本地历史按会话隔离，可在面板清除。
 
 ### 其他
+- **全屏 + 软键盘贴边**：浏览器全屏状态下软键盘弹出会盖住输入卡，脚本用 `visualViewport` 反推键盘高度垫高页面底部，输入框始终贴在键盘上沿（非全屏态交还官网处理，不叠加）。
 - 时间注入开关、页面缩放；设置面板四页签（外观 / 对话 / 提示词 / 其他），移动端底部弹层不溢出、适配深色。
 
 ## 项目结构
@@ -61,7 +63,6 @@ src/
   settings/panel.js     设置面板
   main.js / footer.js   装载顺序与收尾
 vendor/katex*           KaTeX 离线运行库与内联字体 bundle（tools/build-katex.js 生成）
-skin/maid-atelier/     深海女仆工坊皮肤源（占位版 CSS + 原始素材，供 APK / 油猴复用）
 build.js                一键拼接：根目录 user.js / meta.js + dist/inject.js
 dist/inject.js          无 GM 环境注入版（供 WebView 套壳使用）
 android/                DeepSleep 原生 WebView 套壳工程
@@ -85,14 +86,14 @@ node build.js               # 拼接出最终脚本
 - **document-start 注入**：通过 androidx.webkit 的 `addDocumentStartJavaScript` 在页面任何脚本前运行；无论注册是否成功，onPageStarted/onPageFinished 都幂等补跑完整引导（`__DSE_INJECTED__` guard），三层兜底杜绝“主题生效但增强全死”；早期脚本与 inject.js 整体包在同一个 IIFE 内（顶层 `return` 会导致整段语法错误而静默失效，v8.3.1 已修复）；内联 JS 抽在无 Android 依赖的 `InlineJs.java`，`tools/Gen.java` 直接编译真实类拼出最终注入串再 `node --check`，防止拼接语法错误上线；
 - **全屏沉浸**：edge-to-edge（`setDecorFitsSystemWindows(false)`）+ 仅保留 LAYOUT_STABLE/LAYOUT_FULLSCREEN/LAYOUT_HIDE_NAVIGATION 布局穿透标志 + 透明系统栏，手势导航下等同全屏、无黑线；**绝不使用** FLAG_FULLSCREEN / SYSTEM_UI_FLAG_HIDE_NAVIGATION / IMMERSIVE_STICKY——实测这些标志会同时让 adjustResize 与 IME insets 失效（键盘顶不起布局的共同根因）；
 - **键盘适配（Android11 模拟器实测通过）**：edge-to-edge 下窗口不会自动 resize，由三通道处理键盘高度。**动画期不逐帧改布局**（逐帧 setLayoutParams 会让 Chromium surface 逐帧重切，是键盘卡顿、黑缝的根因）：`WindowInsetsAnimationCompat.onProgress` 期间只用 `setTranslationY(-键盘高度)` 做 GPU 合成平移，`onStart`（收起方向）先放开布局并用等值位移承接保证画面不动，`onEnd` 同一时刻清零位移、只落一次 bottomMargin（位移态与落布局态输入框位置严格相等，无跳变）；现代 `WindowInsetsCompat.Type.ime()` 终值与 `OnGlobalLayoutListener` 可见区域测量（SoftInputAssist 原理）为无动画 ROM 兜底，统一 60ms 去抖。关键：终值必须压缩 **WebView 的布局高度（bottomMargin）**而不是加 padding——Chromium WebView 的 fixed 元素锚定在自身视口底边，布局高度收缩后 visualViewport 才收缩，fixed 输入框稳定停在键盘上方，收起对称恢复；**不覆写 onCreateInputConnection**，textarea 回车就是原生换行（输入法只显示换行箭头，无发送动作键）；
+- **附件多选**：文件选择器支持一次选多个（`EXTRA_ALLOW_MULTIPLE` + `ClipData` 逐条回传，并给页面 `input[type=file]` 补 `multiple`）；相机拍照补了「RESULT_OK 但无 data」「RESULT_CANCELED 但文件已写入」两种机型兼容。
 - **系统级分享联动**：Manifest 注册 `ACTION_SEND text/plain`，任意 App 选中文本 → 分享 → DeepSleep，经 `@JavascriptInterface` 桥用 React 原生 setter 填入输入框；
 - **APK 专属出厂默认**（document-start 仅在配置不存在时写入，不影响油猴脚本）：顶栏背景透出、全屏按钮关、时间注入开；
 - **零白闪**：root/开屏/WebView 三层底色与官网 body 最终底色严格一致（实测深色 `#151517`、浅色 `#ffffff`）；document-start 注入首帧底色样式，**等 body 挂上 light/dark 主题类（且去掉 change-theme 过渡类）后再移除**（MutationObserver+6s 兜底），避免 load 早于主题应用造成的白闪；键盘弹收时窗口/容器底色同样与页面一致，杜绝 resize 缝隙黑闪；背景层高度钉在「键盘收起时的大视口」（visualViewport 变小时不更新基准、变大才更新），键盘弹起背景图不缩放、不闪烁；
 - **流畅度（v8.3.6 专项）**：`largeHeap` 扩大堆；首个 WebView 创建前反射 Chromium `CommandLine` 打开 `--ignore-gpu-blocklist/--enable-gpu-rasterization/--enable-zero-copy/--enable-quic`（失败静默）；`RENDERER_PRIORITY_IMPORTANT` 渲染进程不被降频；显式硬件层 + `setOffscreenPreRaster(true)` 离屏预光栅化 + 关闭边缘回弹；注入侧把气泡/正文提升为独立合成层（`translateZ(0)`、关闭属性过渡），虚拟列表 `overscroll-behavior:contain`；**输入框聚焦/粘贴期间暂停磨砂 backdrop-filter 实时采样**（长文本粘贴时 textarea 逐帧增高 + 全屏模糊重采样是卡死主因），失焦恢复；APK 出厂默认（顶栏背景透出/全屏按钮关/时间注入开）用版本化迁移只强制一次，老版本升级也会纠正、之后用户自改不覆盖；
 - **开屏页**：居中睡鲸 logo，底色随系统明暗（values-night），首屏渲染后淡出；
 - **主题跟随系统**：document-start 按系统明暗写入 DeepSeek 主题键，系统切换后自动刷新；
-- **深海女仆工坊皮肤（v8.6.0）**：素材移植自 [Small-tailqwq/dsh-deep-whale](https://github.com/Small-tailqwq/dsh-deep-whale) 的 `maid-atelier`（美术资源 CC BY-NC-SA 4.0、署名链见该仓库 NOTICE），CSS 按 chat.deepseek.com 的真实 DOM 重写。样式表放在 `android/app/src/main/assets/dse-theme/dse-maid.css`（图片以 base64 内联，离线可用、零外部请求），由 `WebViewAssetLoader` 以 `https://appassets.androidplatform.net/assets/` 同源提供，注入只写一个 `<link>` 与两个立绘层，避免超大字符串注入；开关状态存 SharedPreferences（默认关闭），React 重写 `body.class` 时有守护补回；素材与「占位版」CSS 另存 `skin/maid-atelier/`，方便后续油猴端复用；
-- 保留文件上传（识图）、摄像头/麦克风按需授权、网页内返回。
+- **主题皮肤已移除（v8.7.0）**：此前实验性的「深海女仆工坊」整站皮肤在实际设备上稳定性不达标（低版本 WebView 不支持 `inset`/`aspect-ratio`、装饰层裁切与侧栏抽屉冲突），代码、资源与 CI 截图步骤已全部回退，界面回到官网原样；素材与移植记录仍保留在仓库历史中；
 
 ```bash
 node build.js

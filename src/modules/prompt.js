@@ -18,6 +18,28 @@ var Prompt = {
     if (!c.templates) c.templates = JSON.parse(JSON.stringify(this.defaults));
     c.templates[name] = val; DSE.config.save();
   },
+  /* 新对话页还没有 sid 时的暂存：填了并发送才转正，只填不发则丢弃 */
+  getPending: function () { var v = DSE.config.get('pendingPrompt'); return typeof v === 'string' ? v : ''; },
+  setPending: function (v) { DSE.config.set('pendingPrompt', v || ''); },
+  saveField: function (key, val) {
+    var sid = Utils.currentSid();
+    if (sid) { var p = {}; p[key] = val; DSE.config.setSession(sid, p); return; }
+    if (key === 'assistantSystemPrompt') this.setPending(val);
+  },
+  /* 首条消息已带上 pending 后，把这段提示词落到新会话名下 */
+  adoptPending: function () {
+    if (!this._pendingUsed) return;
+    var sid = Utils.currentSid();
+    if (!sid) return;
+    var pending = this.getPending();
+    if (!pending) { this._pendingUsed = false; return; }
+    var s = DSE.config.session(sid);
+    if (!(s.assistantSystemPrompt || '').trim()) {
+      this.saveField('assistantSystemPrompt', pending);
+      this.setPending('');
+    }
+    this._pendingUsed = false;
+  },
   resetTpl: function () { var c = DSE.config.load(); c.templates = JSON.parse(JSON.stringify(this.defaults)); DSE.config.save(); },
 
   historyText: function (sid, limit) {
@@ -41,6 +63,10 @@ var Prompt = {
     // 仅当前会话的系统提示词
     if (cfg.systemPromptEnabled) {
       var asp = (sess.assistantSystemPrompt || '').trim();
+      if (!asp) {
+        var pend = Prompt.getPending();
+        if (pend.trim()) { asp = pend.trim(); Prompt._pendingUsed = true; }
+      }
       if (asp) head.push('[系统设定]\n' + asp);
     }
     // 全量隐私模式：携带本地历史
@@ -80,6 +106,8 @@ var Prompt = {
     if (!c.templates) c.templates = need;
     else Object.keys(need).forEach(function (k) { if (typeof c.templates[k] !== 'string') c.templates[k] = need[k]; });
     DSE.config.save();
+
+    setTimeout(function () { setInterval(function () { Prompt.adoptPending(); }, 800); }, 1500);
 
     DSE.net.addRequestMutator(function (obj, reqCtx) {
       if (!obj || typeof obj.prompt !== 'string' || !obj.prompt) return;

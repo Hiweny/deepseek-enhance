@@ -152,9 +152,7 @@ var Panel = {
       var t = null;
       function commit() {
         t = null;
-        var sid = Utils.currentSid(), key = ta.getAttribute('data-session'), patch = {};
-        patch[key] = ta.value;
-        if (sid) DSE.config.setSession(sid, patch);
+        DSE.modules.prompt.saveField(ta.getAttribute('data-session'), ta.value);
       }
       function schedule() {
         if (t) clearTimeout(t);
@@ -241,9 +239,12 @@ var Panel = {
       var cur = resolve(c, box.getAttribute('data-cards'));
       box.querySelectorAll('.dse-card').forEach(function (cd) { cd.classList.toggle('dse-on', cd.getAttribute('data-card-val') === cur); });
     });
-    var sess = DSE.config.session(Utils.currentSid());
     el.querySelectorAll('[data-session]').forEach(function (ta) {
-      if (document.activeElement !== ta) ta.value = sess[ta.getAttribute('data-session')] || '';
+      if (document.activeElement === ta) return;
+      var sid = Utils.currentSid();
+      var v = sid ? (DSE.config.session(sid)[ta.getAttribute('data-session')] || '')
+                  : DSE.modules.prompt.getPending();
+      ta.value = v;
     });
     el.querySelectorAll('[data-tpl]').forEach(function (ta) {
       if (document.activeElement !== ta) ta.value = DSE.modules.prompt.tpl(ta.getAttribute('data-tpl'));

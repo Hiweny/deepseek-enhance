@@ -15,6 +15,7 @@
     'context',
     'nav',
     'zoom',
+    'kbFix',
     'buttons',
     'panel'
   ];
