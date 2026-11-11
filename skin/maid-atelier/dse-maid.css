@@ -451,12 +451,12 @@ html[data-dse-maid] body .aaff8b8f::before {
   content: "";
   position: absolute;
   box-sizing: border-box;
-  top: -40px; right: -18px; bottom: -26px; left: -18px;
+  top: -44px; right: -18px; bottom: -24px; left: -15px;
   border-style: solid;
-  border-width: 40px 18px 26px;
+  border-width: 44px 18px 24px 15px;
   border-image-source: url("https://appassets.androidplatform.net/assets/dse-theme/img/composer-frame-shell.webp");
   border-image-slice: 74 30 41 26;
-  border-image-width: 40px 18px 26px 18px;
+  border-image-width: 44px 18px 24px 15px;
   border-image-repeat: stretch;
   background-image: url("https://appassets.androidplatform.net/assets/dse-theme/img/composer-lace-tile.png");
   background-position: center top;
@@ -672,9 +672,9 @@ html[data-dse-maid] body #dse-bg-mask {
     background-size: 100px 100px;
   }
   html[data-dse-maid] body .aaff8b8f::before {
-    top: -30px; right: -14px; bottom: -20px; left: -14px;
-    border-width: 30px 14px 20px;
-    border-image-width: 30px 14px 20px 14px;
+    top: -34px; right: -14px; bottom: -19px; left: -12px;
+    border-width: 34px 14px 19px 12px;
+    border-image-width: 34px 14px 19px 12px;
     background-size: 52% 16px;
   }
   html[data-dse-maid] body .aaff8b8f::after {
