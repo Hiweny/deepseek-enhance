@@ -311,6 +311,10 @@ public class MainActivity extends Activity {
                 pendingCaptureUri = null;
                 try { pendingPickerIntent = params.createIntent(); }
                 catch (Exception e) { pendingPickerIntent = null; }
+                // 允许一次选择多个文件（ACTION_GET_CONTENT / ACTION_OPEN_DOCUMENT 均支持）
+                if (pendingPickerIntent != null) {
+                    pendingPickerIntent.putExtra(Intent.EXTRA_ALLOW_MULTIPLE, true);
+                }
                 showAttachmentOptions();
                 return true;
             }
@@ -561,8 +565,19 @@ public class MainActivity extends Activity {
     protected void onActivityResult(int requestCode, int resultCode, Intent data) {
         super.onActivityResult(requestCode, resultCode, data);
         if (requestCode == FILE_CHOOSER_CODE) {
-            Uri[] result = (data == null || resultCode != RESULT_OK) ? null
-                    : WebChromeClient.FileChooserParams.parseResult(resultCode, data);
+            Uri[] result = null;
+            if (resultCode == RESULT_OK && data != null) {
+                // 多选优先：ClipData 里有几条就返回几条
+                ClipData cd = data.getClipData();
+                if (cd != null && cd.getItemCount() > 0) {
+                    result = new Uri[cd.getItemCount()];
+                    for (int k = 0; k < cd.getItemCount(); k++) result[k] = cd.getItemAt(k).getUri();
+                } else if (data.getData() != null) {
+                    result = new Uri[]{data.getData()};
+                } else {
+                    result = WebChromeClient.FileChooserParams.parseResult(resultCode, data);
+                }
+            }
             finishFileChooser(result);
         } else if (requestCode == CAMERA_CAPTURE_CODE) {
             Uri[] result = (resultCode == RESULT_OK && pendingCaptureUri != null)

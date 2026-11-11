@@ -432,18 +432,20 @@ html[data-dse-maid] body.dark ._77cefa5 {
 
 /* 金线九宫格外框 + 蝴蝶结 + 左右丝带（同一层，天然贴合边框） */
 html[data-dse-maid] body .aaff8b8f {
-  border-radius: 28px !important;
-  background: linear-gradient(180deg, rgba(255, 254, 250, .90), rgba(244, 247, 253, .78)) !important;
-  backdrop-filter: none !important;
+  border-radius: 26px !important;
+  padding-top: 10px !important;
+  background: linear-gradient(180deg, rgba(255, 254, 250, .84), rgba(244, 247, 253, .74)) !important;
+  -webkit-backdrop-filter: blur(14px) saturate(1.06);
+  backdrop-filter: blur(14px) saturate(1.06);
   box-shadow:
-    inset 0 0 0 1.5px rgba(197, 164, 104, .55),
-    inset 0 1px 0 rgba(255, 255, 255, .82),
-    0 16px 40px rgba(19, 38, 87, .13) !important;
+    inset 0 0 0 1px rgba(197, 164, 104, .42),
+    inset 0 1px 0 rgba(255, 255, 255, .8),
+    0 16px 40px rgba(19, 38, 87, .14) !important;
 }
 html[data-dse-maid] body.dark .aaff8b8f {
-  background: linear-gradient(180deg, rgba(27, 44, 84, .80), rgba(10, 23, 58, .74)) !important;
+  background: linear-gradient(180deg, rgba(27, 44, 84, .78), rgba(10, 23, 58, .70)) !important;
   box-shadow:
-    inset 0 0 0 1.5px rgba(211, 180, 119, .48),
+    inset 0 0 0 1px rgba(211, 180, 119, .42),
     inset 0 1px 0 rgba(190, 206, 245, .18),
     0 18px 46px rgba(0, 0, 0, .42) !important;
 }
@@ -451,39 +453,42 @@ html[data-dse-maid] body .aaff8b8f::before {
   content: "";
   position: absolute;
   box-sizing: border-box;
-  top: 0; right: 0; bottom: 0; left: 0;
-  border: 0;
-  border-radius: 30px;
+  top: -14px; right: -10px; bottom: -12px; left: -10px;
+  z-index: 1;
   background-image:
-    url("https://appassets.androidplatform.net/assets/dse-theme/img/composer-lace-tile.png"),
-    linear-gradient(180deg, #e0c79a, #c0a26c 55%, #a98a54);
-  background-position: center top 3px, center top;
-  background-size: 54% 20px, 100% 24px;
-  background-repeat: no-repeat, no-repeat;
-  box-shadow:
-    0 0 0 1px rgba(255, 240, 205, .9),
-    0 0 0 12px #c0a26c,
-    0 0 0 13px rgba(110, 84, 44, .5),
-    0 6px 22px rgba(15, 30, 72, .16),
-    inset 0 0 0 1px rgba(255, 255, 255, .72);
+    url("https://appassets.androidplatform.net/assets/dse-theme/img/bow.webp"),
+    url("https://appassets.androidplatform.net/assets/dse-theme/img/ribbon-left-cap.webp"),
+    url("https://appassets.androidplatform.net/assets/dse-theme/img/ribbon-right-cap.webp"),
+    url("https://appassets.androidplatform.net/assets/dse-theme/img/ribbon-left-fill.webp"),
+    url("https://appassets.androidplatform.net/assets/dse-theme/img/ribbon-right-fill.webp");
+  background-position:
+    center top,
+    left 28px top 6px,
+    right 28px top 6px,
+    left 88px top 6px,
+    right 88px top 6px;
+  background-size:
+    auto 46px,
+    44px 15px,
+    44px 15px,
+    max(0px, calc(50% - 118px)) 15px,
+    max(0px, calc(50% - 118px)) 15px;
+  background-repeat: no-repeat;
+  background-origin: border-box;
+  background-clip: border-box;
+  border-style: solid;
+  border-width: 40px 28px 29px;
+  border-image-source: url("https://appassets.androidplatform.net/assets/dse-theme/img/composer-frame-shell.webp");
+  border-image-slice: 74 34 45 30;
+  border-image-width: 40px 28px 29px 28px;
+  border-image-repeat: stretch;
   pointer-events: none;
-  z-index: 3;
-  will-change: transform;
 }
+
 
 /* 蝴蝶结：绝对居中，压在框顶正中，紧贴边框不留缝 */
 html[data-dse-maid] body .aaff8b8f::after {
-  content: "";
-  position: absolute;
-  left: 50%;
-  top: -18px;
-  width: 152px;
-  height: 65px;
-  margin-left: -76px;
-  pointer-events: none;
-  z-index: 4;
-  background: url("https://appassets.androidplatform.net/assets/dse-theme/img/bow.webp") center top / contain no-repeat;
-  filter: drop-shadow(0 4px 10px rgba(4, 11, 35, .32));
+  content: none;
 }
 
 /* 输入框下方工具条 */
@@ -673,23 +678,22 @@ html[data-dse-maid] body #dse-bg-mask {
     background-size: 100px 100px;
   }
   html[data-dse-maid] body .aaff8b8f::before {
-    border-radius: 26px;
-    background-position: center top 2px, center top;
-    background-size: 50% 17px, 100% 20px;
-    box-shadow:
-      0 0 0 1px rgba(255, 240, 205, .9),
-      0 0 0 10px #c0a26c,
-      0 0 0 11px rgba(110, 84, 44, .5),
-      0 6px 20px rgba(15, 30, 72, .16),
-      inset 0 0 0 1px rgba(255, 255, 255, .72);
+    background-position:
+      center top,
+      left 22px top 4px,
+      right 22px top 4px,
+      left 70px top 4px,
+      right 70px top 4px;
+    background-size:
+      auto 38px,
+      34px 12px,
+      34px 12px,
+      max(0px, calc(50% - 94px)) 12px,
+      max(0px, calc(50% - 94px)) 12px;
+    border-width: 32px 22px 24px;
+    border-image-width: 32px 22px 24px 22px;
   }
-  html[data-dse-maid] body .aaff8b8f::after {
-    top: -15px;
-    width: 118px;
-    height: 50px;
-    margin-left: -59px;
-    background: url("https://appassets.androidplatform.net/assets/dse-theme/img/bow.webp") center top / contain no-repeat;
-  }
+
 }
 
 
@@ -929,4 +933,47 @@ html[data-dse-maid] body .dc04ec1d::after {
 }
 html[data-dse-maid] body .aaff8b8f::after {
   will-change: transform;
+}
+
+/* ---------- 白色蕾丝花边（照搬上游 composer-lace 三段式） ---------- */
+html[data-dse-maid] body .aaff8b8f > .maid-lace {
+  position: absolute;
+  top: -14px;
+  left: -10px;
+  right: -10px;
+  height: 46px;
+  z-index: 0;
+  pointer-events: none;
+  overflow: hidden;
+}
+html[data-dse-maid] body .maid-lace::before,
+html[data-dse-maid] body .maid-lace::after {
+  content: "";
+  position: absolute;
+  top: 20px;
+  height: 24px;
+  background-image: url("https://appassets.androidplatform.net/assets/dse-theme/img/composer-lace-tile.png");
+  background-size: 40px 24px;
+  background-repeat: repeat-x;
+}
+html[data-dse-maid] body .maid-lace::before {
+  left: 26px;
+  width: calc(50% - 46px);
+  background-position: left -3px top;
+}
+html[data-dse-maid] body .maid-lace::after {
+  right: 26px;
+  width: calc(50% - 46px);
+  background-position: right 1px top;
+}
+html[data-dse-maid] body .maid-lace > .maid-lace-center {
+  position: absolute;
+  left: calc(50% - 20px);
+  top: 20px;
+  width: 40px;
+  height: 24px;
+  background-image: url("https://appassets.androidplatform.net/assets/dse-theme/img/composer-lace-tile.png");
+  background-size: 40px 24px;
+  background-repeat: no-repeat;
+  background-position: center top;
 }
