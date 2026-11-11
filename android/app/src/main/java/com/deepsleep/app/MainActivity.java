@@ -39,7 +39,6 @@ import androidx.core.view.ViewCompat;
 import androidx.core.view.WindowCompat;
 import androidx.core.view.WindowInsetsAnimationCompat;
 import androidx.core.view.WindowInsetsCompat;
-import androidx.webkit.WebViewAssetLoader;
 import androidx.webkit.WebViewCompat;
 import androidx.webkit.WebViewFeature;
 
@@ -78,9 +77,6 @@ public class MainActivity extends Activity {
     private SharedPreferences prefs;
     private String pendingResumeSid = null;   // 本次启动尝试恢复的会话 id（失败兜底用）
     private boolean resumeFallbackUsed = false;
-    // 皮肤资源（assets/dse-theme/*）由 WebViewAssetLoader 以 https 同源形式提供，
-    // 避免 base64 超大字符串注入，也绕开页面的混合内容限制。
-    private WebViewAssetLoader assetLoader;
 
     // 键盘三通道：IME 动画期只做 GPU 位移（不逐帧 resize，杜绝卡顿/黑缝），动画结束落一次布局；
     // 现代 insets 与全局布局测量为无动画 ROM 兜底
@@ -147,17 +143,6 @@ public class MainActivity extends Activity {
             try { return prefs != null && prefs.getBoolean(K_RESUME, false); } catch (Exception e) { return false; }
         }
 
-        /** 深海女仆工坊皮肤开关（APK 专属） */
-        @JavascriptInterface
-        public boolean maidSkin() {
-            try { return prefs != null && prefs.getBoolean("maid_skin", false); } catch (Exception e) { return false; }
-        }
-
-        @JavascriptInterface
-        public void setMaidSkin(boolean on) {
-            try { if (prefs != null) prefs.edit().putBoolean("maid_skin", on).apply(); } catch (Exception ignored) { }
-        }
-
         @JavascriptInterface
         public void setResume(boolean on) {
             try { if (prefs != null) prefs.edit().putBoolean(K_RESUME, on).apply(); } catch (Exception ignored) { }
@@ -184,10 +169,6 @@ public class MainActivity extends Activity {
         // 窗口底色与页面严格一致，键盘动画/resize 露出的任何缝隙都不是黑色
         getWindow().setBackgroundDrawable(new ColorDrawable(pageBgColor()));
         applyImmersive();
-
-        assetLoader = new WebViewAssetLoader.Builder()
-                .addPathHandler("/assets/", new WebViewAssetLoader.AssetsPathHandler(this))
-                .build();
 
         root = new FrameLayout(this);
         root.setBackgroundColor(pageBgColor());
@@ -269,14 +250,6 @@ public class MainActivity extends Activity {
             }
 
             @Override
-            public android.webkit.WebResourceResponse shouldInterceptRequest(WebView view, WebResourceRequest request) {
-                try {
-                    if (assetLoader != null) return assetLoader.shouldInterceptRequest(request.getUrl());
-                } catch (Exception ignored) { }
-                return null;
-            }
-
-            @Override
             public void onReceivedError(WebView view, WebResourceRequest request,
                                         android.webkit.WebResourceError error) {
                 // 恢复上次对话时若主框架加载失败（会话被删/网络异常），退回到首页，绝不卡死
@@ -311,7 +284,7 @@ public class MainActivity extends Activity {
                 pendingCaptureUri = null;
                 try { pendingPickerIntent = params.createIntent(); }
                 catch (Exception e) { pendingPickerIntent = null; }
-                // 允许一次选择多个文件（ACTION_GET_CONTENT / ACTION_OPEN_DOCUMENT 均支持）
+                // 支持一次选择多个文件
                 if (pendingPickerIntent != null) {
                     pendingPickerIntent.putExtra(Intent.EXTRA_ALLOW_MULTIPLE, true);
                 }
@@ -567,7 +540,6 @@ public class MainActivity extends Activity {
         if (requestCode == FILE_CHOOSER_CODE) {
             Uri[] result = null;
             if (resultCode == RESULT_OK && data != null) {
-                // 多选优先：ClipData 里有几条就返回几条
                 ClipData cd = data.getClipData();
                 if (cd != null && cd.getItemCount() > 0) {
                     result = new Uri[cd.getItemCount()];
@@ -580,9 +552,20 @@ public class MainActivity extends Activity {
             }
             finishFileChooser(result);
         } else if (requestCode == CAMERA_CAPTURE_CODE) {
-            Uri[] result = (resultCode == RESULT_OK && pendingCaptureUri != null)
-                    ? new Uri[]{pendingCaptureUri} : null;
-            finishFileChooser(result);
+            Uri shot = null;
+            if (resultCode == RESULT_OK) {
+                shot = (data != null && data.getData() != null) ? data.getData() : pendingCaptureUri;
+            }
+            if (shot == null && pendingCaptureUri != null) {
+                // 少数机型回 RESULT_CANCELED 但其实已写入文件：文件非空就认
+                try {
+                    android.content.ContentResolver cr = getContentResolver();
+                    java.io.InputStream in = cr.openInputStream(pendingCaptureUri);
+                    if (in != null && in.available() > 0) shot = pendingCaptureUri;
+                    if (in != null) in.close();
+                } catch (Exception ignore) { }
+            }
+            finishFileChooser(shot != null ? new Uri[]{shot} : null);
         } else if (requestCode == VIDEO_CAPTURE_CODE) {
             Uri uri = null;
             if (resultCode == RESULT_OK) {
