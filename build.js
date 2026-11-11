@@ -26,7 +26,10 @@ const ORDER = [
 const readVendor = (p) => fs.readFileSync(path.join(ROOT, p), 'utf8');
 const header = read('header.user.js').trim();
 const vendorBody = VENDOR.map((f) => '\n/* ===== vendor: ' + f + ' ===== */\n' + readVendor(f).trim()).join('\n');
-const body = vendorBody + '\n' + ORDER.map((f) => '\n/* ===== ' + f + ' ===== */\n' + read(f).trim()).join('\n');
+let body = vendorBody + '\n' + ORDER.map((f) => '\n/* ===== ' + f + ' ===== */\n' + read(f).trim()).join('\n');
+// 版本号单一来源：把 header 的 @version 同步进运行时常量，避免两处不一致
+const _ver = (header.match(/@version\s+([\d.]+)/) || [])[1] || '0.0.0';
+body = body.replace(/version: '[^']*'/, "version: '" + _ver + "'");
 
 const userJs = header + '\n' + body + '\n';
 const meta = header.split('\n').filter((l) => l.startsWith('// ==UserScript==') ||
