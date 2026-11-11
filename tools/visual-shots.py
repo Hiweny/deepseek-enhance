@@ -111,11 +111,24 @@ def main():
                 if c.eval("!!document.querySelector('.aaff8b8f')") in (True,):
                     break
                 time.sleep(1.5)
+            # 真机口径：打开皮肤开关后整页重载，让 APK 自身注入【完整脚本 + 皮肤】
             c.eval("try{if(window.DSENative&&DSENative.setMaidSkin)DSENative.setMaidSkin(true);}catch(e){}")
-            c.eval("try{if(window.__dseMaidApply)window.__dseMaidApply(true);}catch(e){}")
-            time.sleep(3)
-            c.eval("try{if(window.__dseMaidApply)window.__dseMaidApply(true);}catch(e){}")
+            time.sleep(1.2)
+            c.eval("location.reload()")
+            time.sleep(11)
+            for _ in range(16):
+                if c.eval("!!document.querySelector('.aaff8b8f')") in (True,):
+                    break
+                time.sleep(1.5)
+            c.eval("""(()=>{const btns=[...document.querySelectorAll('button,div[role=button]')];
+              const b=btns.find(x=>/Accept all|Necessary|同意|接受|Accept/i.test(x.innerText||''));
+              if(b)b.click();})()""")
             time.sleep(2)
+            if c.eval("!document.documentElement.hasAttribute('data-dse-maid')") in (True,):
+                print("SKIN NOT AUTO-APPLIED, fallback", flush=True)
+                c.eval("try{if(window.__dseMaidApply)window.__dseMaidApply(true);}catch(e){}")
+                time.sleep(2)
+            time.sleep(1.5)
             ok = c.shot(os.path.join(OUT, name + ".png"))
             diag = c.eval("""(()=>{const l=document.getElementById('dse-maid-link');
               let rules=0; try{for(const s of document.styleSheets){if(s.href&&s.href.indexOf('dse-maid')>=0)rules=s.cssRules.length;}}catch(e){}
@@ -132,7 +145,11 @@ def main():
                 const b=getComputedStyle(card,'::before');out.before={t:b.top,r:b.right,bo:b.bottom,l:b.left,bt:b.borderTopWidth,bimg:(b.borderImageSource||'').slice(0,55)};
                 const a=getComputedStyle(card,'::after');out.after={w:a.width,h:a.height,l:a.left,ml:a.marginLeft};}
               const sc=document.querySelector('.ds-virtual-list');
-              if(card&&sc){const y0=Math.round(card.getBoundingClientRect().y);sc.scrollTop+=500;await new Promise(r=>setTimeout(r,450));const y1=Math.round(card.getBoundingClientRect().y);sc.scrollTop-=500;await new Promise(r=>setTimeout(r,250));out.scrollDelta=y1-y0;out.canScroll=sc.scrollHeight-sc.clientHeight;}
+              if(card&&sc){const y0=Math.round(card.getBoundingClientRect().y);out.scrollY0=y0;
+                const ys=[];for(let k=0;k<8;k++){sc.scrollTop+=90;await new Promise(r=>setTimeout(r,70));ys.push(Math.round(card.getBoundingClientRect().y));}
+                out.scrollYs=ys;out.scrollJitter=Math.max(...ys)-Math.min(...ys);
+                sc.scrollTop-=720;await new Promise(r=>setTimeout(r,250));
+                out.scrollDelta=Math.round(card.getBoundingClientRect().y)-y0;out.canScroll=sc.scrollHeight-sc.clientHeight;}
               else out.scrollDelta='no-scroller';
               const cl=e=>e?(String(e.className||e.tagName)).slice(0,60):'none';
               out.hitLeft=cl(document.elementFromPoint(24, innerHeight-140));
