@@ -901,7 +901,7 @@ html[data-dse-maid] body.dark [class*="assistant-message-main-content"]:not(#__n
 
 /* 输入座底部留白：让金框下沿完整露出，不被视口裁掉 */
 html[data-dse-maid] body ._871cbca {
-  padding-bottom: 8px !important;
+  padding-bottom: 16px !important;
 }
 /* 对话页输入框贴底：底部装饰带会让位 */
 html[data-dse-maid] body.dse-maid-conv #dse-maid-stage .maid-bottom-band {
