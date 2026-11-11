@@ -2289,7 +2289,10 @@ var KbFix = {
     var r = el.getBoundingClientRect();
     var overlap = Math.round(r.bottom - vvBottom);
 
-    if (overlap > 6 || kbGuess > 90 && overlap > 0) {
+    // 键盘确实弹起（或下沿已被遮住）时，把输入卡下沿精确对齐到可视视口下沿：
+    // 被遮(overlap>0) 往下拉回来，悬空(overlap<0) 也拉回来贴住键盘，官网已对齐则不动
+    var onScreenKb = kbGuess > 90;
+    if ((onScreenKb && Math.abs(overlap) >= 2) || overlap > 6) {
       el.style.setProperty('transition', 'transform .16s ease', 'important');
       el.style.setProperty('transform', 'translateY(-' + overlap + 'px)', 'important');
       this._applied = true;
