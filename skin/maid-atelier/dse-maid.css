@@ -461,10 +461,10 @@ html[data-dse-maid] body .aaff8b8f::before {
     url("https://appassets.androidplatform.net/assets/dse-theme/img/ribbon-right-fill.webp");
   background-position:
     center top,
-    left 28px top 6px,
-    right 28px top 6px,
-    left 88px top 6px,
-    right 88px top 6px;
+    left 44px top 8px,
+    right 44px top 8px,
+    left 104px top 8px,
+    right 104px top 8px;
   background-size:
     auto 46px,
     44px 15px,
@@ -475,10 +475,10 @@ html[data-dse-maid] body .aaff8b8f::before {
   background-origin: border-box;
   background-clip: border-box;
   border-style: solid;
-  border-width: 40px 28px 29px;
+  border-width: 42px 40px 39px;
   border-image-source: url("https://appassets.androidplatform.net/assets/dse-theme/img/composer-frame-shell.webp");
-  border-image-slice: 74 34 45 30;
-  border-image-width: 40px 28px 29px 28px;
+  border-image-slice: 124 118 115 118;
+  border-image-width: 42px 40px 39px 40px;
   border-image-repeat: stretch;
   pointer-events: none;
 }
@@ -678,18 +678,18 @@ html[data-dse-maid] body #dse-bg-mask {
   html[data-dse-maid] body .aaff8b8f::before {
     background-position:
       center top,
-      left 22px top 4px,
-      right 22px top 4px,
-      left 70px top 4px,
-      right 70px top 4px;
+      left 32px top 6px,
+      right 32px top 6px,
+      left 78px top 6px,
+      right 78px top 6px;
     background-size:
       auto 38px,
       34px 12px,
       34px 12px,
       max(0px, calc(50% - 94px)) 12px,
       max(0px, calc(50% - 94px)) 12px;
-    border-width: 32px 22px 24px;
-    border-image-width: 32px 22px 24px 22px;
+    border-width: 32px 30px 29px;
+    border-image-width: 32px 30px 29px 30px;
   }
 
 }
