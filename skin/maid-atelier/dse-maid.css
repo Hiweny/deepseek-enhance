@@ -454,10 +454,12 @@ html[data-dse-maid] body .aaff8b8f::before {
   top: 0; right: 0; bottom: 0; left: 0;
   border: 0;
   border-radius: 30px;
-  background-image: url("https://appassets.androidplatform.net/assets/dse-theme/img/composer-lace-tile.png");
-  background-position: center top;
-  background-size: 54% 20px;
-  background-repeat: no-repeat;
+  background-image:
+    url("https://appassets.androidplatform.net/assets/dse-theme/img/composer-lace-tile.png"),
+    linear-gradient(180deg, #e0c79a, #c0a26c 55%, #a98a54);
+  background-position: center top 3px, center top;
+  background-size: 54% 20px, 100% 24px;
+  background-repeat: no-repeat, no-repeat;
   box-shadow:
     0 0 0 1px rgba(255, 240, 205, .9),
     0 0 0 12px #c0a26c,
@@ -672,7 +674,8 @@ html[data-dse-maid] body #dse-bg-mask {
   }
   html[data-dse-maid] body .aaff8b8f::before {
     border-radius: 26px;
-    background-size: 50% 17px;
+    background-position: center top 2px, center top;
+    background-size: 50% 17px, 100% 20px;
     box-shadow:
       0 0 0 1px rgba(255, 240, 205, .9),
       0 0 0 10px #c0a26c,
