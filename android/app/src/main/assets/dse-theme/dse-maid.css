@@ -451,18 +451,22 @@ html[data-dse-maid] body .aaff8b8f::before {
   content: "";
   position: absolute;
   box-sizing: border-box;
-  top: -34px; right: -14px; bottom: -19px; left: -12px;
+  top: 0; right: 0; bottom: 0; left: 0;
   border: 0;
-  background-image:
-    url("https://appassets.androidplatform.net/assets/dse-theme/img/composer-lace-tile.png"),
-    url("https://appassets.androidplatform.net/assets/dse-theme/img/composer-frame-shell.webp");
-  background-position: center top, center center;
-  background-size: 56% 22px, 100% 100%;
-  background-repeat: no-repeat, no-repeat;
+  border-radius: 30px;
+  background-image: url("https://appassets.androidplatform.net/assets/dse-theme/img/composer-lace-tile.png");
+  background-position: center top;
+  background-size: 54% 20px;
+  background-repeat: no-repeat;
+  box-shadow:
+    0 0 0 1px rgba(255, 240, 205, .9),
+    0 0 0 12px #c0a26c,
+    0 0 0 13px rgba(110, 84, 44, .5),
+    0 6px 22px rgba(15, 30, 72, .16),
+    inset 0 0 0 1px rgba(255, 255, 255, .72);
   pointer-events: none;
   z-index: 3;
   will-change: transform;
-  filter: saturate(1.1) drop-shadow(0 2px 6px rgba(90, 66, 20, .18));
 }
 
 /* 蝴蝶结：绝对居中，压在框顶正中，紧贴边框不留缝 */
@@ -667,8 +671,14 @@ html[data-dse-maid] body #dse-bg-mask {
     background-size: 100px 100px;
   }
   html[data-dse-maid] body .aaff8b8f::before {
-    top: -28px; right: -12px; bottom: -16px; left: -10px;
-    background-size: 52% 18px, 100% 100%;
+    border-radius: 26px;
+    background-size: 50% 17px;
+    box-shadow:
+      0 0 0 1px rgba(255, 240, 205, .9),
+      0 0 0 10px #c0a26c,
+      0 0 0 11px rgba(110, 84, 44, .5),
+      0 6px 20px rgba(15, 30, 72, .16),
+      inset 0 0 0 1px rgba(255, 255, 255, .72);
   }
   html[data-dse-maid] body .aaff8b8f::after {
     top: -15px;
@@ -884,6 +894,14 @@ html[data-dse-maid] body.dark [class*="assistant-message-main-content"]:not(#__n
     inset 0 0 0 1px rgba(211, 180, 119, .38),
     inset 0 1px 0 rgba(190, 206, 245, .16),
     0 10px 28px rgba(0, 0, 0, .34) !important;
+}
+
+/* 对话页输入框贴底：底部装饰带会让位 */
+html[data-dse-maid] body.dse-maid-conv #dse-maid-stage .maid-bottom-band {
+  opacity: 0;
+}
+html[data-dse-maid] body.dse-maid-conv #dse-maid-stage .maid-bottom-band::after {
+  opacity: 0;
 }
 
 /* ---------- v7：侧栏挂帘（swag）+ 蝴蝶结随上边框上移 ---------- */
