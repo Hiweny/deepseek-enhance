@@ -28,5 +28,29 @@ var SEL = {
   // 原生 mermaid 图表容器（美化时避让）
   mermaidPanel: '[class*="mermaid"], .ds-markdown svg'
 };
+
+/* ---- cdn.deepseek.com/chat-demo（API 使用 demo）----
+ * 与主站是两套独立 bundle：消息区复用 ds-markdown / ds-think-content /
+ * md-code-block 等稳定设计 token（上方共用，无需覆盖），但页面骨架与消息
+ * 行类名全是构建哈希（message-e1faee / container-_4cfe7 / area-_3d93a /
+ * title-_3d93a / actions-_4cfe7 / scroll-_7ccaf）。官方重建 demo 后这些
+ * 哈希会变，届时只需更新下面这一组——与主站选择器同一维护模式。
+ * demo 无虚拟列表：消息在普通滚动容器 .scroll-_7ccaf 内顺序渲染；
+ * 用户消息行与 AI 消息底部容器复用同一 CSS 模块（container-_4cfe7），
+ * 取消息行会重复命中，故用户行改用气泡类 bubble-_4cfe7。 */
+var SEL_DEMO = {
+  virtualList: '.scroll-_7ccaf',
+  msg: '.message-e1faee, .bubble-_4cfe7',
+  msgRowAi: '.message-e1faee',
+  msgRowUser: '.bubble-_4cfe7',
+  userMsg: '.bubble-_4cfe7',
+  userBubble: '.bubble-_4cfe7',
+  aiActionBar: '.actions-_4cfe7',
+  thinkBlock: '.area-_3d93a',
+  thinkHeader: '.title-_3d93a'
+};
+if (location.hostname === 'cdn.deepseek.com') {
+  Object.keys(SEL_DEMO).forEach(function (k) { SEL[k] = SEL_DEMO[k]; });
+}
 DSE.SEL = SEL;
 DSE.register('selectors', SEL);

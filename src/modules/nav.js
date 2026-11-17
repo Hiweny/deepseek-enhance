@@ -13,9 +13,10 @@ var Nav = {
   bar: null, busy: false, lastDir: 1,
 
   container: function () {
-    var el = document.querySelector('.ds-virtual-list.ds-scroll-area') || document.querySelector('.ds-virtual-list');
+    // SEL.virtualList 主站=.ds-virtual-list、demo=.scroll-_7ccaf（见 selectors.js）
+    var el = document.querySelector('.ds-virtual-list.ds-scroll-area') || document.querySelector(SEL.virtualList);
     if (el && el.scrollHeight > el.clientHeight) return el;
-    var node = document.querySelector('.ds-virtual-list-visible-items') || document.querySelector('.ds-message');
+    var node = document.querySelector(SEL.visibleItems) || document.querySelector(SEL.msg);
     var p = node ? (node.parentElement || null) : null;
     while (p) {
       var cs = getComputedStyle(p);
@@ -27,7 +28,7 @@ var Nav = {
 
   rows: function () {
     var out = [];
-    var nodes = document.querySelectorAll('.ds-message');
+    var nodes = document.querySelectorAll(SEL.msg);
     for (var i = 0; i < nodes.length; i++) {
       var r = nodes[i].getBoundingClientRect();
       if (r.width === 0 && r.height === 0) continue;

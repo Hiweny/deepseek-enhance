@@ -50,7 +50,21 @@ var Tweaks = {
       if (n.closest && n.closest('#dse-panel')) continue;
       if (n.children.length > 2) continue;
       var t = (n.textContent || '').trim();
-      if (t && t.length < 30 && re.test(t)) n.setAttribute('data-dse-hide', '1');
+      if (!t || t.length >= 30 || !re.test(t)) continue;
+      // 只隐藏“标识本身”，两种形态认：
+      //  1) 直接文本节点就是标识（叶子元素，最可靠）；
+      //  2) 全文含标识但不含任何交互控件。
+      // 反过来——文本里“夹带”了标识、自身又是输入框/按钮容器——绝不能藏：
+      // chat-demo 页的输入容器只有 2 个子节点、全文 22 字符，曾通过旧规则
+      // 被误打标记，[data-dse-hide] 的 !important 把整个输入框隐藏掉
+      // （页面生成结束后恢复的内联样式都被压住），表现为“输入框消失”。
+      // 控件名单不含 <a>：主站标识若附带说明链接，保持与旧版一致的隐藏行为。
+      var direct = '';
+      for (var c = 0; c < n.childNodes.length; c++) {
+        if (n.childNodes[c].nodeType === 3) direct += n.childNodes[c].nodeValue;
+      }
+      var hasCtrl = n.querySelector('textarea,input,button,[role="button"],[role="textbox"]');
+      if (re.test(direct.trim()) || !hasCtrl) n.setAttribute('data-dse-hide', '1');
     }
   },
   scan: function () {

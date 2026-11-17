@@ -17,7 +17,7 @@ var Think = {
     document.body.classList.toggle('dse-think-collapse', on);
   },
   clearOpen: function () {
-    document.querySelectorAll('._74c0879.dse-think-open').forEach(function (b) { b.classList.remove('dse-think-open'); });
+    document.querySelectorAll(SEL.thinkBlock + '.dse-think-open').forEach(function (b) { b.classList.remove('dse-think-open'); });
   },
   init: function () {
     var self = this;

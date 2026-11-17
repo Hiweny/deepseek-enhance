@@ -16,9 +16,15 @@ Bridge.addStyle(`
 ._74c0879 .ds-think-content *{background:transparent!important}
 
 /* ===== 思考区 CSS 折叠（见 modules/think.js）=====
-   只隐藏正文，不点击、不移动站点节点 → 长对话滚动不再因高度突变而跳动 */
+   只隐藏正文，不点击、不移动站点节点 → 长对话滚动不再因高度突变而跳动。
+   与主站严格对齐：只藏 .ds-think-content，思考块内其它内容（主站 ._8f7678d、
+   demo 的联网搜索工具摘要）保持可见——那是原版的设计行为。
+   下面第二条起为 chat-demo 的对应规则（构建哈希，官方重建后可能失效，
+   与 selectors.js 的 SEL_DEMO 同一维护模式）。 */
 body.dse-think-collapse ._74c0879:not(.dse-think-open) .ds-think-content{display:none!important}
 body.dse-think-collapse ._74c0879:not(.dse-think-open) ._3d79d66{transform:rotate(-90deg)}
+body.dse-think-collapse .area-_3d93a:not(.dse-think-open) .ds-think-content{display:none!important}
+body.dse-think-collapse .area-_3d93a:not(.dse-think-open) .title-_3d93a > svg{transform:rotate(-90deg)}
 
 /* 通用隐藏标记（移动版下载应用/AI 标识等由 JS 命中后打上） */
 [data-dse-hide]{display:none!important}
@@ -57,6 +63,22 @@ body.dark.dse-input-frosted ._77cefa5{box-shadow:0 8px 32px rgba(0,0,0,.4), inse
 body.dse-input-frosted ._77cefa5:focus-within{border-color:var(--dse-accent)!important;
   box-shadow:0 10px 36px rgba(59,108,246,.16)!important}
 body.dse-input-frosted textarea{background:transparent!important}
+/* chat-demo 输入框磨砂（构建哈希，官方重建后可能失效，见 selectors.js SEL_DEMO） */
+body.dse-input-frosted .wrapper-ed6f47{
+  background:var(--dse-frost)!important;
+  backdrop-filter:blur(20px) saturate(170%);-webkit-backdrop-filter:blur(20px) saturate(170%);
+  border:1px solid var(--dse-border)!important;border-radius:22px!important;
+  box-shadow:0 8px 32px rgba(15,23,42,.10), inset 0 1px 0 rgba(255,255,255,.5)!important;
+  transition:box-shadow .2s, border-color .2s}
+body.dark.dse-input-frosted .wrapper-ed6f47{box-shadow:0 8px 32px rgba(0,0,0,.4), inset 0 1px 0 rgba(255,255,255,.06)!important}
+body.dse-input-frosted .wrapper-ed6f47:focus-within{border-color:var(--dse-accent)!important;
+  box-shadow:0 10px 36px rgba(59,108,246,.16)!important}
+body.dse-input-frosted .wrapper-ed6f47 textarea{background:transparent!important}
+@media (max-width:640px){
+  body.dse-input-frosted .wrapper-ed6f47{border-radius:20px!important;
+    /* 与主站一致：输入框与屏幕底部保持间距（含手势条安全区） */
+    margin-bottom:max(12px,env(safe-area-inset-bottom))!important}
+}
 @media (max-width:640px){
   body.dse-input-frosted ._77cefa5{border-radius:20px!important}
   /* 输入框与屏幕底部保持间距（含手势条安全区），间隙由固定背景层透出，不会出现黑条 */

@@ -83,7 +83,7 @@ var Bridge = {
 
 /* ---------- 全局命名空间 + 极简事件总线 ---------- */
 var DSE = window.DSE = {
-  version: '8.7.6',
+  version: '8.7.7',
   runtime: HAS_GM ? 'tampermonkey' : 'inject',
   bridge: Bridge,
   modules: {},
@@ -242,6 +242,30 @@ var SEL = {
   // 原生 mermaid 图表容器（美化时避让）
   mermaidPanel: '[class*="mermaid"], .ds-markdown svg'
 };
+
+/* ---- cdn.deepseek.com/chat-demo（API 使用 demo）----
+ * 与主站是两套独立 bundle：消息区复用 ds-markdown / ds-think-content /
+ * md-code-block 等稳定设计 token（上方共用，无需覆盖），但页面骨架与消息
+ * 行类名全是构建哈希（message-e1faee / container-_4cfe7 / area-_3d93a /
+ * title-_3d93a / actions-_4cfe7 / scroll-_7ccaf）。官方重建 demo 后这些
+ * 哈希会变，届时只需更新下面这一组——与主站选择器同一维护模式。
+ * demo 无虚拟列表：消息在普通滚动容器 .scroll-_7ccaf 内顺序渲染；
+ * 用户消息行与 AI 消息底部容器复用同一 CSS 模块（container-_4cfe7），
+ * 取消息行会重复命中，故用户行改用气泡类 bubble-_4cfe7。 */
+var SEL_DEMO = {
+  virtualList: '.scroll-_7ccaf',
+  msg: '.message-e1faee, .bubble-_4cfe7',
+  msgRowAi: '.message-e1faee',
+  msgRowUser: '.bubble-_4cfe7',
+  userMsg: '.bubble-_4cfe7',
+  userBubble: '.bubble-_4cfe7',
+  aiActionBar: '.actions-_4cfe7',
+  thinkBlock: '.area-_3d93a',
+  thinkHeader: '.title-_3d93a'
+};
+if (location.hostname === 'cdn.deepseek.com') {
+  Object.keys(SEL_DEMO).forEach(function (k) { SEL[k] = SEL_DEMO[k]; });
+}
 DSE.SEL = SEL;
 DSE.register('selectors', SEL);
 
@@ -743,6 +767,18 @@ body.dse-preset-water .ds-markdown.ds-assistant-message-main-content > *{positio
 body.dse-preset-water.dark .ds-markdown.ds-assistant-message-main-content{color:#e7e9ee!important;border-color:rgba(255,255,255,.12)!important;background:linear-gradient(135deg,rgba(48,51,62,.86),rgba(34,36,44,.72))!important;backdrop-filter:blur(18px) saturate(165%);-webkit-backdrop-filter:blur(18px) saturate(165%);box-shadow:0 4px 20px rgba(0,0,0,.4),inset 0 1px 0 rgba(255,255,255,.08)!important}
 body.dse-preset-water .fbb737a4{color:#fff!important;background:linear-gradient(135deg,rgba(59,108,246,.66),rgba(92,132,255,.5))!important;backdrop-filter:blur(14px) saturate(165%);-webkit-backdrop-filter:blur(14px) saturate(165%);box-shadow:0 4px 16px rgba(59,108,246,.22),inset 0 1px 0 rgba(255,255,255,.28)}
 body.dse-preset-water.dark .fbb737a4{background:linear-gradient(135deg,rgba(59,108,246,.55),rgba(80,110,220,.42))!important}
+
+/* ===== cdn.deepseek.com/chat-demo 用户气泡（构建哈希，官方重建后可能失效，见 selectors.js）===== */
+.bubble-_4cfe7{border-radius:16px!important;transition:filter .2s, background .2s}
+body.dse-preset-default .bubble-_4cfe7{background:#e8eefc!important;color:#1d2129!important}
+body.dse-preset-default.dark .bubble-_4cfe7{background:rgba(59,108,246,.32)!important;color:#eef2ff!important}
+body.dse-preset-frosted .bubble-_4cfe7{background:rgba(59,108,246,.72)!important;color:#fff!important;backdrop-filter:blur(22px) saturate(180%);-webkit-backdrop-filter:blur(22px) saturate(180%)}
+body.dse-preset-frosted.dark .bubble-_4cfe7{background:rgba(59,108,246,.6)!important}
+body.dse-preset-water .bubble-_4cfe7{color:#fff!important;background:linear-gradient(135deg,rgba(59,108,246,.66),rgba(92,132,255,.5))!important;backdrop-filter:blur(14px) saturate(165%);-webkit-backdrop-filter:blur(14px) saturate(165%);box-shadow:0 4px 16px rgba(59,108,246,.22),inset 0 1px 0 rgba(255,255,255,.28)}
+body.dse-preset-water.dark .bubble-_4cfe7{background:linear-gradient(135deg,rgba(59,108,246,.55),rgba(80,110,220,.42))!important}
+/* demo 无虚拟列表，消息行间距直接用行容器（与主站 ._4f9bf79/._9663006 规则对齐） */
+.message-e1faee, .bubble-_4cfe7{margin-bottom:14px}
+.message-e1faee:last-child, .bubble-_4cfe7:last-child{margin-bottom:4px}
 `);
 
 /* ===== styles/markdown.css.js ===== */
@@ -820,9 +856,15 @@ Bridge.addStyle(`
 ._74c0879 .ds-think-content *{background:transparent!important}
 
 /* ===== 思考区 CSS 折叠（见 modules/think.js）=====
-   只隐藏正文，不点击、不移动站点节点 → 长对话滚动不再因高度突变而跳动 */
+   只隐藏正文，不点击、不移动站点节点 → 长对话滚动不再因高度突变而跳动。
+   与主站严格对齐：只藏 .ds-think-content，思考块内其它内容（主站 ._8f7678d、
+   demo 的联网搜索工具摘要）保持可见——那是原版的设计行为。
+   下面第二条起为 chat-demo 的对应规则（构建哈希，官方重建后可能失效，
+   与 selectors.js 的 SEL_DEMO 同一维护模式）。 */
 body.dse-think-collapse ._74c0879:not(.dse-think-open) .ds-think-content{display:none!important}
 body.dse-think-collapse ._74c0879:not(.dse-think-open) ._3d79d66{transform:rotate(-90deg)}
+body.dse-think-collapse .area-_3d93a:not(.dse-think-open) .ds-think-content{display:none!important}
+body.dse-think-collapse .area-_3d93a:not(.dse-think-open) .title-_3d93a > svg{transform:rotate(-90deg)}
 
 /* 通用隐藏标记（移动版下载应用/AI 标识等由 JS 命中后打上） */
 [data-dse-hide]{display:none!important}
@@ -861,6 +903,22 @@ body.dark.dse-input-frosted ._77cefa5{box-shadow:0 8px 32px rgba(0,0,0,.4), inse
 body.dse-input-frosted ._77cefa5:focus-within{border-color:var(--dse-accent)!important;
   box-shadow:0 10px 36px rgba(59,108,246,.16)!important}
 body.dse-input-frosted textarea{background:transparent!important}
+/* chat-demo 输入框磨砂（构建哈希，官方重建后可能失效，见 selectors.js SEL_DEMO） */
+body.dse-input-frosted .wrapper-ed6f47{
+  background:var(--dse-frost)!important;
+  backdrop-filter:blur(20px) saturate(170%);-webkit-backdrop-filter:blur(20px) saturate(170%);
+  border:1px solid var(--dse-border)!important;border-radius:22px!important;
+  box-shadow:0 8px 32px rgba(15,23,42,.10), inset 0 1px 0 rgba(255,255,255,.5)!important;
+  transition:box-shadow .2s, border-color .2s}
+body.dark.dse-input-frosted .wrapper-ed6f47{box-shadow:0 8px 32px rgba(0,0,0,.4), inset 0 1px 0 rgba(255,255,255,.06)!important}
+body.dse-input-frosted .wrapper-ed6f47:focus-within{border-color:var(--dse-accent)!important;
+  box-shadow:0 10px 36px rgba(59,108,246,.16)!important}
+body.dse-input-frosted .wrapper-ed6f47 textarea{background:transparent!important}
+@media (max-width:640px){
+  body.dse-input-frosted .wrapper-ed6f47{border-radius:20px!important;
+    /* 与主站一致：输入框与屏幕底部保持间距（含手势条安全区） */
+    margin-bottom:max(12px,env(safe-area-inset-bottom))!important}
+}
 @media (max-width:640px){
   body.dse-input-frosted ._77cefa5{border-radius:20px!important}
   /* 输入框与屏幕底部保持间距（含手势条安全区），间隙由固定背景层透出，不会出现黑条 */
@@ -1460,7 +1518,7 @@ var Think = {
     document.body.classList.toggle('dse-think-collapse', on);
   },
   clearOpen: function () {
-    document.querySelectorAll('._74c0879.dse-think-open').forEach(function (b) { b.classList.remove('dse-think-open'); });
+    document.querySelectorAll(SEL.thinkBlock + '.dse-think-open').forEach(function (b) { b.classList.remove('dse-think-open'); });
   },
   init: function () {
     var self = this;
@@ -1694,7 +1752,21 @@ var Tweaks = {
       if (n.closest && n.closest('#dse-panel')) continue;
       if (n.children.length > 2) continue;
       var t = (n.textContent || '').trim();
-      if (t && t.length < 30 && re.test(t)) n.setAttribute('data-dse-hide', '1');
+      if (!t || t.length >= 30 || !re.test(t)) continue;
+      // 只隐藏“标识本身”，两种形态认：
+      //  1) 直接文本节点就是标识（叶子元素，最可靠）；
+      //  2) 全文含标识但不含任何交互控件。
+      // 反过来——文本里“夹带”了标识、自身又是输入框/按钮容器——绝不能藏：
+      // chat-demo 页的输入容器只有 2 个子节点、全文 22 字符，曾通过旧规则
+      // 被误打标记，[data-dse-hide] 的 !important 把整个输入框隐藏掉
+      // （页面生成结束后恢复的内联样式都被压住），表现为“输入框消失”。
+      // 控件名单不含 <a>：主站标识若附带说明链接，保持与旧版一致的隐藏行为。
+      var direct = '';
+      for (var c = 0; c < n.childNodes.length; c++) {
+        if (n.childNodes[c].nodeType === 3) direct += n.childNodes[c].nodeValue;
+      }
+      var hasCtrl = n.querySelector('textarea,input,button,[role="button"],[role="textbox"]');
+      if (re.test(direct.trim()) || !hasCtrl) n.setAttribute('data-dse-hide', '1');
     }
   },
   scan: function () {
@@ -1893,9 +1965,10 @@ var Nav = {
   bar: null, busy: false, lastDir: 1,
 
   container: function () {
-    var el = document.querySelector('.ds-virtual-list.ds-scroll-area') || document.querySelector('.ds-virtual-list');
+    // SEL.virtualList 主站=.ds-virtual-list、demo=.scroll-_7ccaf（见 selectors.js）
+    var el = document.querySelector('.ds-virtual-list.ds-scroll-area') || document.querySelector(SEL.virtualList);
     if (el && el.scrollHeight > el.clientHeight) return el;
-    var node = document.querySelector('.ds-virtual-list-visible-items') || document.querySelector('.ds-message');
+    var node = document.querySelector(SEL.visibleItems) || document.querySelector(SEL.msg);
     var p = node ? (node.parentElement || null) : null;
     while (p) {
       var cs = getComputedStyle(p);
@@ -1907,7 +1980,7 @@ var Nav = {
 
   rows: function () {
     var out = [];
-    var nodes = document.querySelectorAll('.ds-message');
+    var nodes = document.querySelectorAll(SEL.msg);
     for (var i = 0; i < nodes.length; i++) {
       var r = nodes[i].getBoundingClientRect();
       if (r.width === 0 && r.height === 0) continue;
@@ -2233,7 +2306,7 @@ var Buttons = {
   findToolbar: function () {
     var t = document.querySelector(SEL.inputToolbar);
     if (t && t.offsetParent !== null) return t;
-    // 兜底：找包含“深度思考”开关的那一行
+    // 原版兜底：找包含“深度思考”开关的那一行（逻辑保持原样，主站改版时行为不变）
     var ta = document.querySelector(SEL.textarea);
     if (!ta) return null;
     var box = ta.closest('._871cbca') || ta.parentElement;
@@ -2242,7 +2315,27 @@ var Buttons = {
       if (hit) return;
       if (/深度思考/.test(d.textContent || '') && d.children.length <= 8) hit = d.parentElement;
     });
-    return hit;
+    if (hit) return hit;
+    // 原版兜底落空时的补充定位（如 cdn.deepseek.com/chat-demo：独立构建、
+    // class 全是构建哈希，且开关行与输入框是兄弟节点，向上一层找不到）。
+    // 规则不依赖哈希：找「含“深度思考”开关、含按钮、不含输入框」的最小容器，
+    // 直接子按钮优先、后代元素数兜底（整行 > 开关组）。
+    var cands = [];
+    Array.prototype.forEach.call(document.querySelectorAll('div'), function (d) {
+      if (d.contains(ta)) return;                          // 含输入框的不是工具行
+      var txt = d.textContent || '';
+      if (txt.indexOf('深度思考') === -1) return;           // 没有思考开关
+      if (txt.replace(/\s/g, '').length > 300) return;      // 太大会选中整个页面
+      if (!d.querySelector('button')) return;               // 没有按钮算不上工具行
+      cands.push(d);
+    });
+    var row = null, rowScore = -1;
+    cands.forEach(function (d) {
+      var direct = Array.prototype.some.call(d.children, function (c) { return c.tagName === 'BUTTON'; });
+      var score = (direct ? 1000 : 0) + d.querySelectorAll('*').length;
+      if (score > rowScore) { rowScore = score; row = d; }
+    });
+    return row;
   },
   make: function (id, title, html, onClick) {
     var b = document.createElement('button');

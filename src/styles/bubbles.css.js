@@ -37,4 +37,16 @@ body.dse-preset-water .ds-markdown.ds-assistant-message-main-content > *{positio
 body.dse-preset-water.dark .ds-markdown.ds-assistant-message-main-content{color:#e7e9ee!important;border-color:rgba(255,255,255,.12)!important;background:linear-gradient(135deg,rgba(48,51,62,.86),rgba(34,36,44,.72))!important;backdrop-filter:blur(18px) saturate(165%);-webkit-backdrop-filter:blur(18px) saturate(165%);box-shadow:0 4px 20px rgba(0,0,0,.4),inset 0 1px 0 rgba(255,255,255,.08)!important}
 body.dse-preset-water .fbb737a4{color:#fff!important;background:linear-gradient(135deg,rgba(59,108,246,.66),rgba(92,132,255,.5))!important;backdrop-filter:blur(14px) saturate(165%);-webkit-backdrop-filter:blur(14px) saturate(165%);box-shadow:0 4px 16px rgba(59,108,246,.22),inset 0 1px 0 rgba(255,255,255,.28)}
 body.dse-preset-water.dark .fbb737a4{background:linear-gradient(135deg,rgba(59,108,246,.55),rgba(80,110,220,.42))!important}
+
+/* ===== cdn.deepseek.com/chat-demo 用户气泡（构建哈希，官方重建后可能失效，见 selectors.js）===== */
+.bubble-_4cfe7{border-radius:16px!important;transition:filter .2s, background .2s}
+body.dse-preset-default .bubble-_4cfe7{background:#e8eefc!important;color:#1d2129!important}
+body.dse-preset-default.dark .bubble-_4cfe7{background:rgba(59,108,246,.32)!important;color:#eef2ff!important}
+body.dse-preset-frosted .bubble-_4cfe7{background:rgba(59,108,246,.72)!important;color:#fff!important;backdrop-filter:blur(22px) saturate(180%);-webkit-backdrop-filter:blur(22px) saturate(180%)}
+body.dse-preset-frosted.dark .bubble-_4cfe7{background:rgba(59,108,246,.6)!important}
+body.dse-preset-water .bubble-_4cfe7{color:#fff!important;background:linear-gradient(135deg,rgba(59,108,246,.66),rgba(92,132,255,.5))!important;backdrop-filter:blur(14px) saturate(165%);-webkit-backdrop-filter:blur(14px) saturate(165%);box-shadow:0 4px 16px rgba(59,108,246,.22),inset 0 1px 0 rgba(255,255,255,.28)}
+body.dse-preset-water.dark .bubble-_4cfe7{background:linear-gradient(135deg,rgba(59,108,246,.55),rgba(80,110,220,.42))!important}
+/* demo 无虚拟列表，消息行间距直接用行容器（与主站 ._4f9bf79/._9663006 规则对齐） */
+.message-e1faee, .bubble-_4cfe7{margin-bottom:14px}
+.message-e1faee:last-child, .bubble-_4cfe7:last-child{margin-bottom:4px}
 `);
