@@ -10,7 +10,7 @@ var Buttons = {
   findToolbar: function () {
     var t = document.querySelector(SEL.inputToolbar);
     if (t && t.offsetParent !== null) return t;
-    // 兜底：找包含“深度思考”开关的那一行
+    // 原版兜底：找包含“深度思考”开关的那一行（逻辑保持原样，主站改版时行为不变）
     var ta = document.querySelector(SEL.textarea);
     if (!ta) return null;
     var box = ta.closest('._871cbca') || ta.parentElement;
@@ -19,7 +19,27 @@ var Buttons = {
       if (hit) return;
       if (/深度思考/.test(d.textContent || '') && d.children.length <= 8) hit = d.parentElement;
     });
-    return hit;
+    if (hit) return hit;
+    // 原版兜底落空时的补充定位（如 cdn.deepseek.com/chat-demo：独立构建、
+    // class 全是构建哈希，且开关行与输入框是兄弟节点，向上一层找不到）。
+    // 规则不依赖哈希：找「含“深度思考”开关、含按钮、不含输入框」的最小容器，
+    // 直接子按钮优先、后代元素数兜底（整行 > 开关组）。
+    var cands = [];
+    Array.prototype.forEach.call(document.querySelectorAll('div'), function (d) {
+      if (d.contains(ta)) return;                          // 含输入框的不是工具行
+      var txt = d.textContent || '';
+      if (txt.indexOf('深度思考') === -1) return;           // 没有思考开关
+      if (txt.replace(/\s/g, '').length > 300) return;      // 太大会选中整个页面
+      if (!d.querySelector('button')) return;               // 没有按钮算不上工具行
+      cands.push(d);
+    });
+    var row = null, rowScore = -1;
+    cands.forEach(function (d) {
+      var direct = Array.prototype.some.call(d.children, function (c) { return c.tagName === 'BUTTON'; });
+      var score = (direct ? 1000 : 0) + d.querySelectorAll('*').length;
+      if (score > rowScore) { rowScore = score; row = d; }
+    });
+    return row;
   },
   make: function (id, title, html, onClick) {
     var b = document.createElement('button');
