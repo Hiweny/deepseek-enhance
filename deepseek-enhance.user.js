@@ -2,7 +2,7 @@
 // @name         DeepSeek Enhance 深度增强
 // @name:en      DeepSeek Enhance
 // @namespace    https://github.com/Hiweny/deepseek-enhance
-// @version      8.7.7
+// @version      8.7.8
 // @description  气泡材质(默认iOS磨砂)/思考自动折叠/代码块自动折叠/中英文界面/Markdown本地美化/LaTeX/图片URL背景/顶栏背景透出/按会话隔离的系统提示词(新对话可先填后发)/防撤回/上下文用量/消息导航(虚拟列表适配)/输入框磨砂/移动端适配
 // @updateURL    https://raw.githubusercontent.com/Hiweny/deepseek-enhance/main/deepseek-enhance.meta.js
 // @downloadURL  https://raw.githubusercontent.com/Hiweny/deepseek-enhance/main/deepseek-enhance.user.js
@@ -106,7 +106,7 @@ var Bridge = {
 
 /* ---------- 全局命名空间 + 极简事件总线 ---------- */
 var DSE = window.DSE = {
-  version: '8.7.7',
+  version: '8.7.8',
   runtime: HAS_GM ? 'tampermonkey' : 'inject',
   bridge: Bridge,
   modules: {},
@@ -284,7 +284,11 @@ var SEL_DEMO = {
   userBubble: '.bubble-_4cfe7',
   aiActionBar: '.actions-_4cfe7',
   thinkBlock: '.area-_3d93a',
-  thinkHeader: '.title-_3d93a'
+  thinkHeader: '.title-_3d93a',
+  // demo 是客户端直连 api.deepseek.com：无服务端会话 id、无 history_messages
+  // 接口、无 accumulated_token_usage 真值——上下文用量统计整段不适用，
+  // 设置面板里对应分区（含"立即重新统计"按钮）据此隐藏。
+  noServerSession: true
 };
 if (location.hostname === 'cdn.deepseek.com') {
   Object.keys(SEL_DEMO).forEach(function (k) { SEL[k] = SEL_DEMO[k]; });
@@ -2458,12 +2462,16 @@ var Panel = {
         this.sw('markdownPretty', T('Markdown 排版美化'), T('只改本地样式，不向 AI 发送任何指令')) +
         this.sw('latexRender', T('LaTeX 公式渲染'), T('离线 KaTeX，渲染 \\( \\)、\\[ \\]、$ 公式')) +
         this.sw('timeInject', T('隐式时间注入')) +
+        // 上下文用量依赖主站服务端会话（URL  sid + history_messages 接口 +
+        // accumulated_token_usage 真值）；chat-demo 是客户端直连 API、无服务端
+        // 会话，整段不适用——隐藏而不是留一个按不动的按钮（SEL.noServerSession）
+        (SEL.noServerSession ? '' :
         '<div class="dse-p-sec">' + T('本会话上下文用量') + '</div>' +
         '<div class="dse-ctx"><div class="dse-ctx-track"><div class="dse-ctx-fill" data-ctx-fill></div></div>' +
         '<div class="dse-ctx-meta"><span data-ctx-text></span><span data-ctx-pct></span></div></div>' +
         '<div class="dse-range-row"><span>' + T('提醒阈值') + '</span><input type="range" min="10" max="100" step="5" data-bind="ctxWarnPct"><span class="dse-range-val" data-val="ctxWarnPct"></span></div>' +
         '<div class="dse-row-desc" style="margin:-2px 0 6px">' + T('当前模型上下文约 1M；用量达到该百分比时弹一次提醒。') + '</div>' +
-        '<button class="dse-btn ghost" data-act="resetCtx" style="width:100%">' + T('立即重新统计（拉取本会话历史）') + '</button>' +
+        '<button class="dse-btn ghost" data-act="resetCtx" style="width:100%">' + T('立即重新统计（拉取本会话历史）') + '</button>') +
       '</div>' +
 
       // ============ 提示词 ============

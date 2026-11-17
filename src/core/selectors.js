@@ -47,7 +47,11 @@ var SEL_DEMO = {
   userBubble: '.bubble-_4cfe7',
   aiActionBar: '.actions-_4cfe7',
   thinkBlock: '.area-_3d93a',
-  thinkHeader: '.title-_3d93a'
+  thinkHeader: '.title-_3d93a',
+  // demo 是客户端直连 api.deepseek.com：无服务端会话 id、无 history_messages
+  // 接口、无 accumulated_token_usage 真值——上下文用量统计整段不适用，
+  // 设置面板里对应分区（含"立即重新统计"按钮）据此隐藏。
+  noServerSession: true
 };
 if (location.hostname === 'cdn.deepseek.com') {
   Object.keys(SEL_DEMO).forEach(function (k) { SEL[k] = SEL_DEMO[k]; });
